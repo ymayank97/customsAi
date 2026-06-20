@@ -1,0 +1,208 @@
+{
+  "build_timestamp": "2026-04-29T04:57:29.919431Z",
+  "library_versions": {
+    "python": "3.11.4",
+    "pandas": "3.0.2",
+    "pyarrow": "24.0.0",
+    "scikit-learn": "1.8.0",
+    "pdfplumber": "0.11.9"
+  },
+  "stage_summary": {
+    "stage1_custada": {
+      "rows": 12468,
+      "with_notes_text": 1243
+    },
+    "stage2_tariff": {
+      "chapters_parsed": 96,
+      "items": 11791,
+      "non_ok_chapters": []
+    },
+    "stage3_4_notifications": {
+      "rows": 39,
+      "by_type": {
+        "CBEC": 32,
+        "CompCess": 3,
+        "IGST": 3,
+        "Customs": 1
+      }
+    },
+    "stage5_jumbo": {
+      "schedule_rows": 999,
+      "conditions": 93,
+      "pct_with_bcd_rate": 1.0
+    },
+    "stage6_xref": {
+      "rows": 17441,
+      "unique_cths_with_link": 10648,
+      "by_match_type": {
+        "jumbo_schedule": 9850,
+        "chapter_2d": 5035,
+        "heading_4d": 1966,
+        "exact_8d": 590
+      }
+    },
+    "stage7_master": {
+      "rows": 12468,
+      "with_statutory_desc": 12417,
+      "with_chapter_notes": 11721,
+      "with_applicable_ntfns": 10648,
+      "with_bcd_diff": 562,
+      "source_match_distribution": {
+        "exact": 11631,
+        "inherited_4d": 464,
+        "inherited_6d": 322,
+        "none": 51
+      }
+    },
+    "stage8_descriptions": {
+      "rows": 47082,
+      "by_variant": {
+        "custada_short": 12468,
+        "statutory_full": 12417,
+        "chapter_title": 12417,
+        "statutory_subheading": 8325,
+        "notes_excerpt": 1243,
+        "jumbo_description": 212
+      },
+      "unique_cths": 12468
+    },
+    "stage9_rate_variants": {
+      "rows": 142612,
+      "default_rows": 12468,
+      "jumbo_rows": 130144,
+      "cths_with_multiple_variants": 9850,
+      "max_variants_for_one_cth": 52
+    },
+    "stage10_chunks_tfidf": {
+      "notification_chunks": 578,
+      "tfidf_rows": 12468
+    }
+  },
+  "validation": {
+    "custada_vs_cache": {
+      "cache_present": true,
+      "cache_count": 12512,
+      "new_count": 12468,
+      "overlap": 12468,
+      "coverage": 0.996483,
+      "missing_from_new": [
+        "01032005",
+        "07031010",
+        "08020813",
+        "08028013",
+        "14043305",
+        "17011702",
+        "17021704",
+        "19052106",
+        "20081930",
+        "23022309",
+        "25283839",
+        "27090010",
+        "27090090",
+        "27160395",
+        "28523822",
+        "29380893",
+        "31033000",
+        "38249090",
+        "39203921",
+        "39236305",
+        "40114013",
+        "46014602",
+        "48024907",
+        "48174907",
+        "48490771",
+        "51065110",
+        "51115113",
+        "52015203",
+        "52055207",
+        "52085212",
+        "53055308",
+        "53095311",
+        "54075408",
+        "55015502",
+        "55125516",
+        "71027104",
+        "73218516",
+        "84468448",
+        "85258806",
+        "87028703",
+        "87028704",
+        "88028806",
+        "94055040",
+        "96089609"
+      ],
+      "missing_total": 44,
+      "extras_vs_cache": 0
+    }
+  },
+  "output_files": {
+    "_custada_rows.parquet": {
+      "size_bytes": 659357,
+      "sha256": "29837c521087777c67fa13c14e3a5a0061bfe21768386eb5a534ce07d05cd011"
+    },
+    "_custada_validation.json": {
+      "size_bytes": 950,
+      "sha256": "ebe46dba09fed6a6fbe853c093ff892e80e9a96e750f288e4f1073565aed17cd"
+    },
+    "_ntfn_filelist.json": {
+      "size_bytes": 57963,
+      "sha256": "dba44a6c728987056a3f061cc7eab9fa8212f1762bbe339de9dcde04f0708187"
+    },
+    "_tariff_items.parquet": {
+      "size_bytes": 324112,
+      "sha256": "f9aefb8b6dfe321e18c0f7c83c4658ae35839883d32bbc7323a4c14e7dbe26cf"
+    },
+    "_tariff_subheading_index.parquet": {
+      "size_bytes": 266828,
+      "sha256": "be09168491b5e8438bf35ff24ff40a13040638ab09462552173b436da4d496d1"
+    },
+    "_tariff_validation.json": {
+      "size_bytes": 14065,
+      "sha256": "575ad2ee4bde7ea9628dd83c3695a8ea4a2656830fbb05315504567bd1c07130"
+    },
+    "cth_descriptions.parquet": {
+      "size_bytes": 1072642,
+      "sha256": "d64387d0d4cd5286dc2e53e65dbc237d37b95f74fa9b4f93a797b64acebd09bb"
+    },
+    "cth_master.csv": {
+      "size_bytes": 71681655,
+      "sha256": "9b46a663ff1901b695e323412eb256a312dfba7627b600514af547ca33e44694"
+    },
+    "cth_master.parquet": {
+      "size_bytes": 1352020,
+      "sha256": "70d23d71c4b1007176732f8aae77926e222b0f4cddbf079d5c039f1f207d9258"
+    },
+    "cth_rate_variants.parquet": {
+      "size_bytes": 297982,
+      "sha256": "146e9bec89166f73221e1d430e8376811d69dc7e1e4f9d57b0da62500b00a6b7"
+    },
+    "cth_to_notifications.parquet": {
+      "size_bytes": 138119,
+      "sha256": "191696bbf2834fdf7c91e05c642644367990f3f80be2ae431cc3d6e265e269f5"
+    },
+    "jumbo_50_2017_conditions.parquet": {
+      "size_bytes": 3126,
+      "sha256": "6da1b0d63a78c15db61c99c4232583f665f9f392756501dfe5c4fcbc869bf874"
+    },
+    "jumbo_50_2017_schedule.parquet": {
+      "size_bytes": 74336,
+      "sha256": "fa8f6d630ef1d42b5d9156d9569746797e05d97ad28629eb15d8bb89d9e66c94"
+    },
+    "notification_chunks.parquet": {
+      "size_bytes": 330500,
+      "sha256": "18e01bc5accc6b39c190835d0ab052ec68ff8b52b6c5f624cc18a08359d86b49"
+    },
+    "notifications.parquet": {
+      "size_bytes": 328547,
+      "sha256": "0dc0d4361152348baf3c6e1865b6de3e8e5fc983c673a0264bd97b801e2c97bd"
+    },
+    "tariff_chapters.parquet": {
+      "size_bytes": 948060,
+      "sha256": "4c79396b985248f20870637b53a8fa5024a010b774bdb619368b81921aeabc87"
+    },
+    "tfidf.pkl": {
+      "size_bytes": 6717719,
+      "sha256": "47fbdd6319fbb843dd73d3b0166b616db5e9a753cc064ae88d4e41c449dd66f2"
+    }
+  }
+}

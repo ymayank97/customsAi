@@ -1,0 +1,684 @@
+{
+  "stats": {
+    "chapters_parsed": 96,
+    "total_items": 11791,
+    "total_prefix_entries": 11191,
+    "ocr_fallbacks": 0,
+    "parse_failures": []
+  },
+  "per_chapter": [
+    {
+      "chapter_no": 1,
+      "section_no": 1,
+      "parse_status": "ok",
+      "n_items": 44,
+      "file": "S1 C1.pdf"
+    },
+    {
+      "chapter_no": 2,
+      "section_no": 1,
+      "parse_status": "ok",
+      "n_items": 69,
+      "file": "S1 C2.pdf"
+    },
+    {
+      "chapter_no": 3,
+      "section_no": 1,
+      "parse_status": "ok",
+      "n_items": 292,
+      "file": "S1 C3.pdf"
+    },
+    {
+      "chapter_no": 5,
+      "section_no": 1,
+      "parse_status": "ok",
+      "n_items": 63,
+      "file": "S1 C5.pdf"
+    },
+    {
+      "chapter_no": 47,
+      "section_no": 10,
+      "parse_status": "ok",
+      "n_items": 21,
+      "file": "S10 C47.pdf"
+    },
+    {
+      "chapter_no": 48,
+      "section_no": 10,
+      "parse_status": "ok",
+      "n_items": 214,
+      "file": "S10 C48.pdf"
+    },
+    {
+      "chapter_no": 49,
+      "section_no": 10,
+      "parse_status": "ok",
+      "n_items": 31,
+      "file": "S10 C49.pdf"
+    },
+    {
+      "chapter_no": 50,
+      "section_no": 11,
+      "parse_status": "ok",
+      "n_items": 29,
+      "file": "S11 C50.pdf"
+    },
+    {
+      "chapter_no": 51,
+      "section_no": 11,
+      "parse_status": "ok",
+      "n_items": 105,
+      "file": "S11 C51.pdf"
+    },
+    {
+      "chapter_no": 52,
+      "section_no": 11,
+      "parse_status": "ok",
+      "n_items": 425,
+      "file": "S11 C52.pdf"
+    },
+    {
+      "chapter_no": 53,
+      "section_no": 11,
+      "parse_status": "ok",
+      "n_items": 64,
+      "file": "S11 C53.pdf"
+    },
+    {
+      "chapter_no": 54,
+      "section_no": 11,
+      "parse_status": "ok",
+      "n_items": 242,
+      "file": "S11 C54.pdf"
+    },
+    {
+      "chapter_no": 55,
+      "section_no": 11,
+      "parse_status": "ok",
+      "n_items": 197,
+      "file": "S11 C55.pdf"
+    },
+    {
+      "chapter_no": 56,
+      "section_no": 11,
+      "parse_status": "ok",
+      "n_items": 48,
+      "file": "S11 C56.pdf"
+    },
+    {
+      "chapter_no": 57,
+      "section_no": 11,
+      "parse_status": "ok",
+      "n_items": 84,
+      "file": "S11 C57.pdf"
+    },
+    {
+      "chapter_no": 58,
+      "section_no": 11,
+      "parse_status": "ok",
+      "n_items": 78,
+      "file": "S11 C58.pdf"
+    },
+    {
+      "chapter_no": 59,
+      "section_no": 11,
+      "parse_status": "ok",
+      "n_items": 68,
+      "file": "S11 C59.pdf"
+    },
+    {
+      "chapter_no": 60,
+      "section_no": 11,
+      "parse_status": "ok",
+      "n_items": 46,
+      "file": "S11 C60.pdf"
+    },
+    {
+      "chapter_no": 61,
+      "section_no": 11,
+      "parse_status": "ok",
+      "n_items": 191,
+      "file": "S11 C61.pdf"
+    },
+    {
+      "chapter_no": 62,
+      "section_no": 11,
+      "parse_status": "ok",
+      "n_items": 163,
+      "file": "S11 C62.pdf"
+    },
+    {
+      "chapter_no": 63,
+      "section_no": 11,
+      "parse_status": "ok",
+      "n_items": 114,
+      "file": "S11 C63.pdf"
+    },
+    {
+      "chapter_no": 64,
+      "section_no": 12,
+      "parse_status": "ok",
+      "n_items": 69,
+      "file": "S12 C64.pdf"
+    },
+    {
+      "chapter_no": 65,
+      "section_no": 12,
+      "parse_status": "ok",
+      "n_items": 15,
+      "file": "S12 C65.pdf"
+    },
+    {
+      "chapter_no": 66,
+      "section_no": 12,
+      "parse_status": "ok",
+      "n_items": 7,
+      "file": "S12 C66.pdf"
+    },
+    {
+      "chapter_no": 67,
+      "section_no": 12,
+      "parse_status": "ok",
+      "n_items": 15,
+      "file": "S12 C67.pdf"
+    },
+    {
+      "chapter_no": 68,
+      "section_no": 13,
+      "parse_status": "ok",
+      "n_items": 84,
+      "file": "S13 C68.pdf"
+    },
+    {
+      "chapter_no": 69,
+      "section_no": 13,
+      "parse_status": "ok",
+      "n_items": 59,
+      "file": "S13 C69.pdf"
+    },
+    {
+      "chapter_no": 70,
+      "section_no": 13,
+      "parse_status": "ok",
+      "n_items": 111,
+      "file": "S13 C70.pdf"
+    },
+    {
+      "chapter_no": 71,
+      "section_no": 14,
+      "parse_status": "ok",
+      "n_items": 112,
+      "file": "S14 C71.pdf"
+    },
+    {
+      "chapter_no": 72,
+      "section_no": 15,
+      "parse_status": "ok",
+      "n_items": 511,
+      "file": "S15 C72.pdf"
+    },
+    {
+      "chapter_no": 73,
+      "section_no": 15,
+      "parse_status": "ok",
+      "n_items": 262,
+      "file": "S15 C73.pdf"
+    },
+    {
+      "chapter_no": 74,
+      "section_no": 15,
+      "parse_status": "ok",
+      "n_items": 96,
+      "file": "S15 C74.pdf"
+    },
+    {
+      "chapter_no": 75,
+      "section_no": 15,
+      "parse_status": "ok",
+      "n_items": 27,
+      "file": "S15 C75.pdf"
+    },
+    {
+      "chapter_no": 76,
+      "section_no": 15,
+      "parse_status": "ok",
+      "n_items": 97,
+      "file": "S15 C76.pdf"
+    },
+    {
+      "chapter_no": 78,
+      "section_no": 15,
+      "parse_status": "ok",
+      "n_items": 17,
+      "file": "S15 C78.pdf"
+    },
+    {
+      "chapter_no": 79,
+      "section_no": 15,
+      "parse_status": "ok",
+      "n_items": 21,
+      "file": "S15 C79.pdf"
+    },
+    {
+      "chapter_no": 80,
+      "section_no": 15,
+      "parse_status": "ok",
+      "n_items": 12,
+      "file": "S15 C80.pdf"
+    },
+    {
+      "chapter_no": 81,
+      "section_no": 15,
+      "parse_status": "ok",
+      "n_items": 68,
+      "file": "S15 C81.pdf"
+    },
+    {
+      "chapter_no": 82,
+      "section_no": 15,
+      "parse_status": "ok",
+      "n_items": 98,
+      "file": "S15 C82.pdf"
+    },
+    {
+      "chapter_no": 83,
+      "section_no": 15,
+      "parse_status": "ok",
+      "n_items": 62,
+      "file": "S15 C83.pdf"
+    },
+    {
+      "chapter_no": 84,
+      "section_no": 16,
+      "parse_status": "ok",
+      "n_items": 1058,
+      "file": "S16 C84.pdf"
+    },
+    {
+      "chapter_no": 85,
+      "section_no": 16,
+      "parse_status": "ok",
+      "n_items": 583,
+      "file": "S16 C85.pdf"
+    },
+    {
+      "chapter_no": 86,
+      "section_no": 17,
+      "parse_status": "ok",
+      "n_items": 41,
+      "file": "S17 C86.pdf"
+    },
+    {
+      "chapter_no": 87,
+      "section_no": 17,
+      "parse_status": "ok",
+      "n_items": 220,
+      "file": "S17 C87.pdf"
+    },
+    {
+      "chapter_no": 88,
+      "section_no": 17,
+      "parse_status": "ok",
+      "n_items": 35,
+      "file": "S17 C88.pdf"
+    },
+    {
+      "chapter_no": 89,
+      "section_no": 17,
+      "parse_status": "ok",
+      "n_items": 31,
+      "file": "S17 C89.pdf"
+    },
+    {
+      "chapter_no": 90,
+      "section_no": 18,
+      "parse_status": "ok",
+      "n_items": 259,
+      "file": "S18 C90.pdf"
+    },
+    {
+      "chapter_no": 91,
+      "section_no": 18,
+      "parse_status": "ok",
+      "n_items": 66,
+      "file": "S18 C91.pdf"
+    },
+    {
+      "chapter_no": 92,
+      "section_no": 18,
+      "parse_status": "ok",
+      "n_items": 19,
+      "file": "S18 C92.pdf"
+    },
+    {
+      "chapter_no": 93,
+      "section_no": 19,
+      "parse_status": "ok",
+      "n_items": 20,
+      "file": "S19 C93.pdf"
+    },
+    {
+      "chapter_no": 10,
+      "section_no": 2,
+      "parse_status": "ok",
+      "n_items": 138,
+      "file": "S2 C10.pdf"
+    },
+    {
+      "chapter_no": 11,
+      "section_no": 2,
+      "parse_status": "ok",
+      "n_items": 39,
+      "file": "S2 C11.pdf"
+    },
+    {
+      "chapter_no": 12,
+      "section_no": 2,
+      "parse_status": "ok",
+      "n_items": 78,
+      "file": "S2 C12.pdf"
+    },
+    {
+      "chapter_no": 13,
+      "section_no": 2,
+      "parse_status": "ok",
+      "n_items": 45,
+      "file": "S2 C13.pdf"
+    },
+    {
+      "chapter_no": 14,
+      "section_no": 2,
+      "parse_status": "ok",
+      "n_items": 15,
+      "file": "S2 C14.pdf"
+    },
+    {
+      "chapter_no": 6,
+      "section_no": 2,
+      "parse_status": "ok",
+      "n_items": 24,
+      "file": "S2 C6.pdf"
+    },
+    {
+      "chapter_no": 7,
+      "section_no": 2,
+      "parse_status": "ok",
+      "n_items": 104,
+      "file": "S2 C7.pdf"
+    },
+    {
+      "chapter_no": 8,
+      "section_no": 2,
+      "parse_status": "ok",
+      "n_items": 111,
+      "file": "S2 C8.pdf"
+    },
+    {
+      "chapter_no": 9,
+      "section_no": 2,
+      "parse_status": "ok",
+      "n_items": 141,
+      "file": "S2 C9.pdf"
+    },
+    {
+      "chapter_no": 94,
+      "section_no": 20,
+      "parse_status": "ok",
+      "n_items": 48,
+      "file": "S20 C94.pdf"
+    },
+    {
+      "chapter_no": 95,
+      "section_no": 20,
+      "parse_status": "ok",
+      "n_items": 60,
+      "file": "S20 C95.pdf"
+    },
+    {
+      "chapter_no": 96,
+      "section_no": 20,
+      "parse_status": "ok",
+      "n_items": 100,
+      "file": "S20 C96.pdf"
+    },
+    {
+      "chapter_no": 97,
+      "section_no": 21,
+      "parse_status": "ok",
+      "n_items": 25,
+      "file": "S21 C97.pdf"
+    },
+    {
+      "chapter_no": 98,
+      "section_no": 21,
+      "parse_status": "ok",
+      "n_items": 14,
+      "file": "S21 C98.pdf"
+    },
+    {
+      "chapter_no": 15,
+      "section_no": 3,
+      "parse_status": "ok",
+      "n_items": 118,
+      "file": "S3 C15.pdf"
+    },
+    {
+      "chapter_no": 16,
+      "section_no": 4,
+      "parse_status": "ok",
+      "n_items": 47,
+      "file": "S4 C16.pdf"
+    },
+    {
+      "chapter_no": 17,
+      "section_no": 4,
+      "parse_status": "ok",
+      "n_items": 41,
+      "file": "S4 C17.pdf"
+    },
+    {
+      "chapter_no": 18,
+      "section_no": 4,
+      "parse_status": "ok",
+      "n_items": 15,
+      "file": "S4 C18.pdf"
+    },
+    {
+      "chapter_no": 19,
+      "section_no": 4,
+      "parse_status": "ok",
+      "n_items": 32,
+      "file": "S4 C19.pdf"
+    },
+    {
+      "chapter_no": 20,
+      "section_no": 4,
+      "parse_status": "ok",
+      "n_items": 72,
+      "file": "S4 C20.pdf"
+    },
+    {
+      "chapter_no": 21,
+      "section_no": 4,
+      "parse_status": "ok",
+      "n_items": 42,
+      "file": "S4 C21.pdf"
+    },
+    {
+      "chapter_no": 22,
+      "section_no": 4,
+      "parse_status": "ok",
+      "n_items": 67,
+      "file": "S4 C22.pdf"
+    },
+    {
+      "chapter_no": 23,
+      "section_no": 4,
+      "parse_status": "ok",
+      "n_items": 66,
+      "file": "S4 C23.pdf"
+    },
+    {
+      "chapter_no": 24,
+      "section_no": 4,
+      "parse_status": "ok",
+      "n_items": 52,
+      "file": "S4 C24.pdf"
+    },
+    {
+      "chapter_no": 25,
+      "section_no": 5,
+      "parse_status": "ok",
+      "n_items": 174,
+      "file": "S5 C25.pdf"
+    },
+    {
+      "chapter_no": 26,
+      "section_no": 5,
+      "parse_status": "ok",
+      "n_items": 75,
+      "file": "S5 C26.pdf"
+    },
+    {
+      "chapter_no": 27,
+      "section_no": 5,
+      "parse_status": "ok",
+      "n_items": 114,
+      "file": "S5 C27.pdf"
+    },
+    {
+      "chapter_no": 28,
+      "section_no": 6,
+      "parse_status": "ok",
+      "n_items": 325,
+      "file": "S6 C28.pdf"
+    },
+    {
+      "chapter_no": 29,
+      "section_no": 6,
+      "parse_status": "ok",
+      "n_items": 947,
+      "file": "S6 C29.pdf"
+    },
+    {
+      "chapter_no": 30,
+      "section_no": 6,
+      "parse_status": "ok",
+      "n_items": 200,
+      "file": "S6 C30.pdf"
+    },
+    {
+      "chapter_no": 31,
+      "section_no": 6,
+      "parse_status": "ok",
+      "n_items": 29,
+      "file": "S6 C31.pdf"
+    },
+    {
+      "chapter_no": 32,
+      "section_no": 6,
+      "parse_status": "ok",
+      "n_items": 337,
+      "file": "S6 C32.pdf"
+    },
+    {
+      "chapter_no": 33,
+      "section_no": 6,
+      "parse_status": "ok",
+      "n_items": 124,
+      "file": "S6 C33.pdf"
+    },
+    {
+      "chapter_no": 34,
+      "section_no": 6,
+      "parse_status": "ok",
+      "n_items": 51,
+      "file": "S6 C34.pdf"
+    },
+    {
+      "chapter_no": 35,
+      "section_no": 6,
+      "parse_status": "ok",
+      "n_items": 38,
+      "file": "S6 C35.pdf"
+    },
+    {
+      "chapter_no": 36,
+      "section_no": 6,
+      "parse_status": "ok",
+      "n_items": 22,
+      "file": "S6 C36.pdf"
+    },
+    {
+      "chapter_no": 37,
+      "section_no": 6,
+      "parse_status": "ok",
+      "n_items": 100,
+      "file": "S6 C37.pdf"
+    },
+    {
+      "chapter_no": 38,
+      "section_no": 6,
+      "parse_status": "ok",
+      "n_items": 179,
+      "file": "S6 C38.pdf"
+    },
+    {
+      "chapter_no": 39,
+      "section_no": 7,
+      "parse_status": "ok",
+      "n_items": 425,
+      "file": "S7 C39.pdf"
+    },
+    {
+      "chapter_no": 40,
+      "section_no": 7,
+      "parse_status": "ok",
+      "n_items": 168,
+      "file": "S7 C40.pdf"
+    },
+    {
+      "chapter_no": 41,
+      "section_no": 8,
+      "parse_status": "ok",
+      "n_items": 50,
+      "file": "S8 C41.pdf"
+    },
+    {
+      "chapter_no": 42,
+      "section_no": 8,
+      "parse_status": "ok",
+      "n_items": 62,
+      "file": "S8 C42.pdf"
+    },
+    {
+      "chapter_no": 43,
+      "section_no": 8,
+      "parse_status": "ok",
+      "n_items": 24,
+      "file": "S8 C43.pdf"
+    },
+    {
+      "chapter_no": 44,
+      "section_no": 9,
+      "parse_status": "ok",
+      "n_items": 218,
+      "file": "S9 C44.pdf"
+    },
+    {
+      "chapter_no": 45,
+      "section_no": 9,
+      "parse_status": "ok",
+      "n_items": 10,
+      "file": "S9 C45.pdf"
+    },
+    {
+      "chapter_no": 46,
+      "section_no": 9,
+      "parse_status": "ok",
+      "n_items": 13,
+      "file": "S9 C46.pdf"
+    }
+  ],
+  "non_ok_chapters": []
+}
