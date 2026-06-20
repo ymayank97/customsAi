@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(.venv\\\\Scripts\\\\python.exe -c \"import numpy, sklearn; print\\(numpy.__version__, sklearn.__version__\\)\"; .venv\\\\Scripts\\\\python.exe -m backend.app.ml.train_chapter_sklearn)",
+      "PowerShell(.venv\\\\Scripts\\\\python.exe -m backend.scripts.benchmark_ml --rows 2000 --backend sklearn)",
+      "PowerShell(.venv\\\\Scripts\\\\python.exe -m backend.app.ml.train_chapter_sklearn)",
+      "PowerShell(.venv\\\\Scripts\\\\python.exe -m backend.scripts.benchmark_ml --rows 300 --retrieval --retrieval-rows 300)",
+      "PowerShell(if \\(Test-Path \"$env:USERPROFILE\\\\.cache\\\\huggingface\\\\hub\"\\) { Get-ChildItem \"$env:USERPROFILE\\\\.cache\\\\huggingface\\\\hub\" -Name })",
+      "PowerShell($env:RETRIEVAL_MODE = 'dense'; .venv\\\\Scripts\\\\python.exe -m backend.scripts.benchmark_ml --rows 300 --retrieval --retrieval-rows 300)",
+      "PowerShell(.venv\\\\Scripts\\\\python.exe -m backend.scripts._exp_heading_fusion)",
+      "Bash(git:*)",
+      "Bash(npm:*)",
+      "Bash(pytest:*)",
+      "Write(*)",
+      "Read(*)"
+    ]
+  }
+}

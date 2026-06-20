@@ -1,0 +1,40 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: customsai_backend
+    env_file:
+      - backend/.env
+    environment:
+      - ALLOWED_ORIGINS=http://localhost:3000
+      # JWT_SECRET + GOOGLE_OAUTH_CLIENT_ID in backend/.env enable Google OAuth.
+      # DATABASE_URL targets Postgres (otherwise SQLite lives in ./var).
+    volumes:
+      # Persist SQLite + FAISS cache across container restarts.
+      - ./var:/app/var
+      - ./data:/app/data:ro
+    # Bind to localhost only — production exposure is via nginx/Cloudflare proxying to 127.0.0.1:8000.
+    # For pure-local dev replace with "8000:8000" (less safe on shared networks).
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 300s
+      retries: 3
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_BACKEND_URL: http://127.0.0.1:8000
+    container_name: customsai_frontend
+    depends_on:
+      - backend
+    ports:
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped

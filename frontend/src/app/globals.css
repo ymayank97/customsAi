@@ -1,0 +1,113 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  html, body {
+    background: theme(colors.page);
+    color: theme(colors.ink.DEFAULT);
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    font-family: var(--font-inter), system-ui, sans-serif;
+  }
+  ::selection {
+    background: theme(colors.accent.soft);
+    color: theme(colors.ink.DEFAULT);
+  }
+  /* Scrollbar (notion-ish) */
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-thumb { background: #d8d7d4; border-radius: 6px; }
+  *::-webkit-scrollbar-thumb:hover { background: #c4c3bf; }
+  *::-webkit-scrollbar-track { background: transparent; }
+}
+
+@layer components {
+  .container-narrow {
+    @apply mx-auto w-full max-w-[940px] px-6;
+  }
+  .container-wide {
+    @apply mx-auto w-full max-w-[1280px] px-6;
+  }
+  .surface {
+    @apply rounded-2xl border border-line bg-surface shadow-soft;
+  }
+  .surface-hover {
+    @apply transition-all duration-200 hover:border-line2 hover:shadow-lift;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-ink text-white hover:bg-ink-soft active:scale-[.98];
+  }
+  .btn-secondary {
+    @apply btn bg-surface text-ink-soft border border-line hover:bg-page hover:border-line2;
+  }
+  .btn-ghost {
+    @apply btn text-ink-soft hover:bg-page;
+  }
+  /* High-clarity: large touch targets for untrained operators */
+  .btn-xl {
+    @apply inline-flex items-center justify-center gap-2.5 rounded-2xl px-7 py-4 text-[17px] font-semibold transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/25;
+  }
+  .btn-primary-xl {
+    @apply btn-xl bg-ink text-white shadow-lift hover:bg-ink-soft active:scale-[.99];
+  }
+  .btn-secondary-xl {
+    @apply btn-xl border-2 border-line2 bg-surface text-ink hover:border-ink/30 hover:bg-page;
+  }
+  /* Step indicator dots for the wizard */
+  .step-dot {
+    @apply h-2.5 w-2.5 rounded-full bg-line2 transition-all duration-300;
+  }
+  .step-dot-active {
+    @apply w-7 bg-ink;
+  }
+  .step-dot-done {
+    @apply bg-success;
+  }
+  .field-label {
+    @apply text-[13px] font-semibold uppercase tracking-wide text-ink-muted;
+  }
+  .input {
+    @apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-muted/70 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/15;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink-muted;
+  }
+  .kbd {
+    @apply inline-flex h-5 min-w-[20px] items-center justify-center rounded border border-line bg-page px-1.5 font-mono text-[11px] text-ink-muted;
+  }
+  .skeleton {
+    @apply relative overflow-hidden rounded bg-line/60;
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
+    background-size: 800px 100%;
+    animation: shimmer 1.6s linear infinite;
+  }
+}
+
+/* Smooth route transitions */
+.page-enter {
+  animation: slideUp 360ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+/* Indeterminate progress bar */
+@keyframes indet {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(140%); }
+  100% { transform: translateX(140%); }
+}
+.indet-bar {
+  animation: indet 1.4s ease-in-out infinite;
+}

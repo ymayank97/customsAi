@@ -1,0 +1,5 @@
+# Optional tooling (install after backend/requirements.txt):
+#   pip install -r backend/requirements-dev.txt
+pdfplumber>=0.10
+pytesseract>=0.3.10
+xlrd>=2.0.1
