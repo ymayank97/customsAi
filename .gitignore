@@ -11,6 +11,9 @@ var/
 data/input_data.xlsx
 data/uploads/
 data/results/
+# Large, rebuildable generated artifacts (build via backend scripts)
+data/enriched/
+data/precedent/
 
 .venv/
 venv/
