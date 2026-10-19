@@ -56,9 +56,11 @@ def _load_rows(limit: int | None) -> list[dict]:
     return rows
 
 
-def _evaluate(rows: list[dict]) -> dict:
+def _evaluate(rows: list[dict], offline: bool = False) -> dict:
+    from backend.app.core.llm_client import HeuristicClassifier
+
     t0 = time.time()
-    results = pipeline.process_rows(rows)
+    results = pipeline.process_rows(rows, classifier=HeuristicClassifier() if offline else None)
     wall = time.time() - t0
 
     n = len(results)
@@ -183,14 +185,15 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=300,
                     help="Rows from adversarial_test_set.parquet (default 300).")
     ap.add_argument("--full", action="store_true", help="Score the full set.")
+    ap.add_argument("--offline", action="store_true", help="Use the heuristic classifier; make no LLM calls.")
     args = ap.parse_args()
 
     limit = None if args.full else args.limit
     limit_desc = "full set" if args.full else f"first {args.limit} rows"
-    mode = _llm_mode()
+    mode = "heuristic" if args.offline else _llm_mode()
 
     rows = _load_rows(limit)
-    m = _evaluate(rows)
+    m = _evaluate(rows, offline=args.offline)
 
     print("=" * 64)
     print(f"PIPELINE EVAL  ({limit_desc}, LLM mode={mode})")

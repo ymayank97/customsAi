@@ -11,6 +11,7 @@ from backend.app.config import settings
 from backend.app.db import User, get_engine
 from backend.app.deps import get_current_user
 from backend.app.rate_limit import limiter
+from backend.app.membership import user_payload
 
 router = APIRouter(tags=["auth"])
 
@@ -75,12 +76,7 @@ def google_exchange(request: Request, body: GoogleLoginBody):
         "access_token": token,
         "token_type": "bearer",
         "expires_in_days": settings.jwt_exp_days,
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "name": user.name or "",
-            "picture": user.picture or "",
-        },
+        "user": user_payload(user),
     }
 
 
@@ -92,10 +88,5 @@ def auth_me(who: User | None = Depends(get_current_user)):
     return {
         "authenticated": True,
         "auth_disabled": False,
-        "user": {
-            "id": who.id,
-            "email": who.email,
-            "name": who.name or "",
-            "picture": who.picture or "",
-        },
+        "user": user_payload(who),
     }

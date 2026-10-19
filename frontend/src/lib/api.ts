@@ -38,8 +38,11 @@ async function asJson<T>(r: Response): Promise<T> {
     throw new Error("Session expired");
   }
   if (!r.ok) {
-    const text = await r.text().catch(() => "");
-    throw new Error(text || `${r.status} ${r.statusText}`);
+    const body = await r.json().catch(() => null);
+    const detail = body?.detail;
+    const message = typeof detail === "string" ? detail : Array.isArray(detail)
+      ? detail.map((issue: { msg: string }) => issue.msg).join(". ") : null;
+    throw new Error(message || `Request failed (${r.status}). Please try again.`);
   }
   return (await r.json()) as T;
 }
@@ -112,17 +115,37 @@ export interface AuditTrace {
   stages: AuditStage[];
 }
 
-export interface FeedbackPayload {
-  job_id?: string;
+export type ReviewDecision = "confirmed" | "corrected" | "needs_information";
+
+export interface ReviewPayload {
+  job_id: string;
   row_idx: number;
-  item_description: string;
-  declared_cth?: string;
-  predicted_cth?: string;
-  predicted_bcd?: number | null;
-  corrected_cth: string;
+  decision: ReviewDecision;
+  corrected_cth?: string | null;
   corrected_bcd?: number | null;
-  reasoning?: string;
-  user?: string;
+  reference: string;
+  reasoning: string;
+  product_details: string;
+}
+
+export interface TrainingLabel extends ReviewPayload {
+  id: number;
+  user_id: number;
+  item_description: string;
+  declared_cth: string;
+  predicted_cth: string;
+  predicted_bcd: number | null;
+  reviewer_name: string;
+  created_at: string;
+  updated_at: string;
+  quality?: "ready" | "conflict" | "needs_information";
+}
+
+export interface ReviewList {
+  items: TrainingLabel[];
+  total: number;
+  scope: "my_reviews" | "all_reviewers";
+  summary: { reviewed: number; training_examples: number; needs_information: number; conflicts: number };
 }
 
 export interface Candidate {
@@ -223,6 +246,7 @@ export interface RevenueBasis {
 }
 
 export interface RowResult {
+  review?: TrainingLabel | null;
   row_idx: number;
   declared_cth: string;
   declared_bcd: number | null;
@@ -313,18 +337,32 @@ export const api = {
     return asJson<{ job_id: string; status: JobStatus }>(r);
   },
 
-  saveFeedback: async (payload: FeedbackPayload) => {
-    const r = await apiFetch("/api/feedback", {
+  saveReview: async (payload: ReviewPayload) => {
+    const r = await apiFetch("/api/reviews", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    return asJson<{ ok: boolean; feedback: any }>(r);
+    return asJson<{ ok: boolean; review: TrainingLabel }>(r);
   },
 
-  listFeedback: (jobId?: string) =>
-    apiFetch(`/api/feedback${jobId ? `?job_id=${encodeURIComponent(jobId)}` : ""}`)
-      .then((r) => asJson<{ items: any[] }>(r)),
+  listReviews: (opts: { q?: string; page?: number } = {}) =>
+    apiFetch(`/api/reviews?${new URLSearchParams({ q: opts.q || "", page: String(opts.page || 1) })}`)
+      .then((r) => asJson<ReviewList>(r)),
+
+  tariffCode: (code: string) => apiFetch(`/api/cth/${encodeURIComponent(code)}`)
+    .then((r) => asJson<{ description?: string; leaf_text?: string }>(r)),
+
+  downloadTrainingLabels: async () => {
+    const r = await apiFetch("/api/reviews/export");
+    if (!r.ok) await asJson(r);
+    const url = URL.createObjectURL(await r.blob());
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "reviewed_training_labels.csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+  },
 
   listJobs: (): Promise<JobSummary[]> =>
     apiFetch("/api/uploads").then((r) => asJson<JobSummary[]>(r)),

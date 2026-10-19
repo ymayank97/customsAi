@@ -23,7 +23,7 @@ class ClassificationResult(BaseModel):
     # Stage 3 (GIR adjudicator) extensions.
     conformal_set: list[str] = Field(
         default_factory=list,
-        description="Codes the adjudicator cannot rule out (conformal prediction set)")
+        description="Uncalibrated ambiguity set; no statistical coverage guarantee")
     citations: list[str] = Field(
         default_factory=list,
         description="Pinpoint citations to heading/section/chapter note text supporting the choice")

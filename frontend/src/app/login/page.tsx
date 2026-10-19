@@ -1,107 +1,59 @@
 "use client";
 
 import { Suspense, useEffect } from "react";
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, Loader2 } from "lucide-react";
-import { useAuth } from "@/providers/AppProviders";
+import { BookOpen, Check, ClipboardCheck, ShieldCheck } from "lucide-react";
+import { safeNext, useAuth } from "@/providers/AppProviders";
 
 export default function LoginPage() {
-  return (
-    <Suspense fallback={<LoginShell><LoadingState /></LoginShell>}>
-      <LoginInner />
-    </Suspense>
-  );
+  return <Suspense fallback={<div className="container-narrow py-20">Loading sign-in…</div>}><Login /></Suspense>;
 }
 
-function LoginInner() {
+function Login() {
+  const { status, LoginButton, authError, retryAuth } = useAuth();
   const router = useRouter();
-  const search = useSearchParams();
-  const { status, LoginButton } = useAuth();
-
+  const params = useSearchParams();
   useEffect(() => {
-    if (status === "signed-in" || status === "disabled") {
-      const next = search.get("next") || "/upload";
-      router.replace(next.startsWith("/") ? next : "/upload");
-    }
-  }, [status, router, search]);
-
-  if (status === "loading" || status === "signed-in") {
-    return (
-      <LoginShell>
-        <LoadingState />
-      </LoginShell>
-    );
-  }
-
-  if (status === "disabled") {
-    return (
-      <LoginShell>
-        <h1 className="font-serif text-[32px] leading-tight tracking-tight">No sign-in needed</h1>
-        <p className="mt-3 text-sm text-ink-muted">
-          This deployment is running without OAuth — you can use it directly.
-        </p>
-        <div className="mt-7 flex justify-center">
-          <Link href="/upload" className="btn-primary">
-            Continue
-            <ArrowRight className="h-4 w-4" />
-          </Link>
+    if (status === "signed-in" || status === "disabled") router.replace(safeNext(params.get("next")));
+  }, [status, params, router]);
+  return <div className="container-wide py-10 sm:py-20">
+    <div className="surface grid overflow-hidden lg:grid-cols-[1.1fr_1fr]">
+      <section className="bg-accent-soft/40 p-7 sm:p-12">
+        <span className="inline-flex items-center gap-2 text-sm font-semibold text-accent"><ShieldCheck className="h-5 w-5" /> Customs review workspace</span>
+        <h1 className="mt-6 font-serif text-4xl sm:text-5xl leading-tight">Review Bills of Entry<br />with a clearer picture.</h1>
+        <p className="mt-5 max-w-md text-base leading-relaxed text-ink-soft">Compare declared tariff codes with suggestions, inspect potential duty differences, and record your decision.</p>
+        <ol className="mt-8 space-y-5">
+          {[
+            ["Upload your Excel file", "Start with a Bill of Entry in .xlsx format."],
+            ["Focus on items needing attention", "See the description, tariff code and duty difference together."],
+            ["Record an officer review", "Approved premium reviewers save verified decisions for future model training."],
+          ].map(([title, detail], index) => <li key={title} className="flex gap-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-accent/20 bg-surface text-sm font-semibold text-accent">{index + 1}</span>
+            <div><p className="font-medium">{title}</p><p className="mt-1 text-sm leading-relaxed text-ink-soft">{detail}</p></div>
+          </li>)}
+        </ol>
+      </section>
+      <section className="p-7 sm:p-12">
+        <h2 className="text-2xl font-semibold tracking-tight">Sign in to your workspace</h2>
+        <p className="mt-2 text-sm leading-relaxed text-ink-soft">Use your Google account. Access is based on the account approved by your administrator.</p>
+        <div className="mt-7 space-y-3">
+          <AccessCard icon={<BookOpen className="h-5 w-5" />} title="Standard access" features={["Upload and view your audits", "Read tariff suggestions and download reports"]} />
+          <AccessCard icon={<ClipboardCheck className="h-5 w-5" />} title="Premium reviewer" premium features={["Everything in Standard", "Confirm or correct individual items", "Save reviewed items and export training labels"]} />
         </div>
-      </LoginShell>
-    );
-  }
-
-  return (
-    <LoginShell>
-      <Brand />
-      <h1 className="mt-6 font-serif text-[36px] leading-[1.05] tracking-tight">
-        Sign in to continue
-      </h1>
-      <p className="mt-3 text-[15px] leading-relaxed text-ink-soft">
-        Use your authorized Google work account. A sign-in window will pop up.
-      </p>
-      <div className="mt-8 flex justify-center">
-        <LoginButton />
-      </div>
-      <p className="mt-8 text-[12px] text-ink-muted">
-        Bill of Entry files stay on this secure deployment.
-      </p>
-    </LoginShell>
-  );
-}
-
-function LoginShell({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-[calc(100vh-3.5rem)] grid place-items-center px-6 pb-24">
-      <div className="w-full max-w-[400px] animate-slide-up">
-        <div className="rounded-3xl border border-line bg-surface shadow-lift p-10 text-center">
-          {children}
+        <div className="mt-8 min-h-12">
+          {status === "loading" ? <p role="status" className="text-sm text-ink-muted">Connecting to sign-in…</p> :
+            status === "unavailable" ? <div role="alert"><p className="text-sm text-danger">{authError}</p><button onClick={retryAuth} className="btn-secondary mt-3">Try again</button></div> :
+            status === "signed-out" ? <LoginButton /> : <p role="status" className="text-sm text-ink-muted">Opening your workspace…</p>}
         </div>
-        <p className="mt-5 text-center text-[11px] text-ink-muted">
-          <Link href="/" className="hover:text-ink transition">
-            ← Back home
-          </Link>
-        </p>
-      </div>
+        <p className="mt-6 border-t border-line pt-5 text-sm text-ink-muted">Need reviewer access? Ask your administrator to approve your email. Signing in does not change your access level.</p>
+      </section>
     </div>
-  );
+  </div>;
 }
 
-function Brand() {
-  return (
-    <div className="flex justify-center">
-      <span className="grid h-11 w-11 place-items-center rounded-2xl bg-ink text-white text-[15px] font-bold tracking-tight shadow-soft">
-        cA
-      </span>
-    </div>
-  );
-}
-
-function LoadingState() {
-  return (
-    <div className="flex flex-col items-center gap-4 py-6">
-      <Loader2 className="h-5 w-5 animate-spin text-ink-muted" />
-      <p className="text-sm text-ink-muted">Checking your session…</p>
-    </div>
-  );
+function AccessCard({ icon, title, features, premium = false }: { icon: React.ReactNode; title: string; features: string[]; premium?: boolean }) {
+  return <div className={premium ? "rounded-xl border border-accent/25 bg-accent-soft/30 p-4" : "rounded-xl border border-line p-4"}>
+    <div className="flex items-center gap-2 text-sm font-semibold">{icon}{title}{premium && <span className="ml-auto rounded-full bg-surface px-2 py-1 text-xs font-medium text-accent">Approval required</span>}</div>
+    <ul className="mt-3 space-y-2">{features.map(feature => <li key={feature} className="flex gap-2 text-sm text-ink-soft"><Check className="mt-0.5 h-4 w-4 shrink-0 text-success" />{feature}</li>)}</ul>
+  </div>;
 }

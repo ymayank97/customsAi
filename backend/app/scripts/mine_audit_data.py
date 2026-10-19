@@ -9,8 +9,8 @@ hierarchical-cascade + LLM-adjudicator rebuild:
      they were filed under. A retrieval / candidate-recall booster ONLY. Because
      these are declared, a (description -> cth) pair is a weak prior, NOT proof
      the code is correct.
-  2. fewshot_examples.json — a chapter-diverse bank of (description, declared_cth,
-     hierarchy) examples to prime the Stage-3 LLM adjudicator with breadth.
+  2. fewshot_examples.json — a chapter-diverse reference bank of declarations.
+     The adjudicator ignores these unless expert gold_cth + label_source are supplied.
   3. adversarial_test_set.parquet — a deterministic held-out split of distinct
      descriptions reserved for pipeline evaluation (Agent A6). Declared values are
      kept as a WEAK reference, explicitly NOT gold truth.
@@ -100,6 +100,19 @@ def _custada_pairs() -> pd.DataFrame:
 
 def _input_pairs() -> pd.DataFrame:
     if not INPUT_BE.exists():
+        if OUT_ALIAS.exists():
+            saved = pd.read_parquet(OUT_ALIAS)
+            saved = saved[saved["source"].eq("input")]
+            if not saved.empty:
+                saved = saved.loc[saved.index.repeat(saved["freq"].astype(int))].reset_index(drop=True)
+                print("[load] BE workbook missing; retaining previously mined input aliases (cleaned text only).")
+                return pd.DataFrame({
+                    "raw_description": saved["normalized_description"],
+                    "cth": saved["cth"],
+                    "source": "input",
+                    "declared_bcd": None,
+                    "assess_val": None,
+                })
         return pd.DataFrame(
             columns=["raw_description", "cth", "source", "declared_bcd", "assess_val"]
         )
@@ -107,8 +120,8 @@ def _input_pairs() -> pd.DataFrame:
     out = pd.DataFrame({
         "raw_description": df[BE_DESC].astype("string"),
         "cth": df[BE_CTH].map(_norm_cth),
-        "declared_bcd": (df[BE_BCD] if BE_BCD in df.columns else pd.NA).astype("object"),
-        "assess_val": (df[BE_ASSESS] if BE_ASSESS in df.columns else pd.NA).astype("object"),
+        "declared_bcd": df[BE_BCD].astype("object") if BE_BCD in df.columns else None,
+        "assess_val": df[BE_ASSESS].astype("object") if BE_ASSESS in df.columns else None,
     })
     out["source"] = "input"
     return out[["raw_description", "cth", "source", "declared_bcd", "assess_val"]]
@@ -175,8 +188,10 @@ def split_descriptions(alias: pd.DataFrame) -> tuple[set[str], set[str]]:
         .sort_values("normalized_description")
         .reset_index(drop=True)
     )
-    test = distinct.sample(frac=TEST_FRACTION, random_state=SEED)
-    test_set = set(test["normalized_description"])
+    distinct["split_key"] = distinct["normalized_description"].map(normalize_for_matching)
+    keys = distinct["split_key"].drop_duplicates().sort_values()
+    test_keys = set(keys.sample(frac=TEST_FRACTION, random_state=SEED))
+    test_set = set(distinct.loc[distinct["split_key"].isin(test_keys), "normalized_description"])
     pool_set = set(distinct["normalized_description"]) - test_set
     return pool_set, test_set
 
@@ -292,7 +307,7 @@ def write_report(stats: dict) -> None:
         "NO officer-corrected codes. A `(description -> cth)` pair therefore records",
         "only what an importer *claimed*, which is exactly the thing the fraud pipeline",
         "exists to second-guess. Treat the alias index as a candidate-recall booster,",
-        "the few-shot bank as a breadth prior, and the test set's `declared_cth` as a",
+        "the few-shot bank as unverified reference material, and the test set's `declared_cth` as a",
         "weak reference for agreement metrics — never as ground-truth correctness.",
         "",
         "## Sources",
@@ -316,17 +331,19 @@ def write_report(stats: dict) -> None:
         f"- Distinct normalized descriptions: **{a['alias_distinct_desc']:,}**",
         f"- Distinct CTHs covered: **{a['alias_distinct_cth']:,}**",
         f"- Chapters covered: **{a['alias_chapters']}**",
+        f"- Alias rows excluded for evaluation: **{a.get('heldout_alias_rows', 0):,}**",
         "",
         "## Train/test split logic",
         "",
-        f"- Performed on DISTINCT normalized descriptions (not raw rows), seed `{SEED}`.",
+        f"- Grouped by stemmed matching keys (including abbreviation expansion), seed `{SEED}`.",
         f"- Test fraction: **{TEST_FRACTION:.0%}** held out for evaluation (Agent A6).",
-        "- Few-shot pool = the complementary descriptions. The two sets are DISJOINT,",
-        "  so no test description is ever shown to the LLM as a few-shot exemplar.",
+        "- Both the alias index and few-shot bank use only the training pool.",
+        "  Test descriptions and their matching-key variants are excluded from both.",
         "",
         "## Artifact 2 — fewshot_examples.json",
         "",
-        "Chapter-diverse bank to prime the Stage-3 LLM adjudicator. Sampled from the",
+        "Unverified reference bank. Runtime prompting requires expert `gold_cth` + `label_source`.",
+        "Sampled from the",
         f"few-shot pool, capped at **{FEWSHOT_PER_CHAPTER_CAP} per chapter** "
         f"(one exemplar per (chapter, cth)), soft global cap **{FEWSHOT_TARGET}**.",
         "Each example carries `{description, declared_cth, chapter, heading,",
@@ -370,6 +387,10 @@ def main() -> None:
         "--skip-existing", action="store_true",
         help="Skip generation if all three artifacts already exist.",
     )
+    ap.add_argument(
+        "--preserve-test-set", action="store_true",
+        help="Keep the existing evaluation rows and exclude their matching keys from rebuilt aliases and few-shot examples.",
+    )
     args = ap.parse_args()
 
     if args.skip_existing and OUT_ALIAS.exists() and OUT_FEWSHOT.exists() and OUT_TESTSET.exists():
@@ -384,17 +405,39 @@ def main() -> None:
     print(f"[load] raw (desc, cth) pairs: {len(pairs):,}")
 
     alias, alias_stats = build_alias_index(pairs, master)
-    alias.to_parquet(OUT_ALIAS, index=False)
-    print(f"[write] {OUT_ALIAS}  rows={len(alias):,}")
-
-    pool, test_descs = split_descriptions(alias)
+    if args.preserve_test_set:
+        if not OUT_TESTSET.exists():
+            raise ValueError("--preserve-test-set requires an existing adversarial_test_set.parquet")
+        testset = pd.read_parquet(OUT_TESTSET)
+        test_keys = set(testset["item_description"].map(normalize_for_matching))
+        test_descs = set(alias.loc[alias["normalized_description"].map(normalize_for_matching).isin(test_keys), "normalized_description"])
+        pool = set(alias["normalized_description"]) - test_descs
+        test_stats = {
+            "testset_rows": len(testset),
+            "testset_chapters": int(testset["chapter"].nunique()),
+            "testset_noisy": int(testset["is_noisy"].sum()),
+            "testset_from_input": int(testset["source"].eq("input").sum()),
+            "testset_from_custada": int(testset["source"].eq("custada").sum()),
+        }
+    else:
+        pool, test_descs = split_descriptions(alias)
+        testset, test_stats = build_testset(pairs, test_descs, master)
     print(f"[split] fewshot-pool descs={len(pool):,}  test descs={len(test_descs):,}  seed={SEED}")
+    train_alias = alias[alias["normalized_description"].isin(pool)].reset_index(drop=True)
+    alias_stats.update({
+        "heldout_alias_rows": len(alias) - len(train_alias),
+        "alias_rows": len(train_alias),
+        "alias_distinct_desc": int(train_alias["normalized_description"].nunique()),
+        "alias_distinct_cth": int(train_alias["cth"].nunique()),
+        "alias_chapters": int(train_alias["chapter"].nunique()),
+    })
+    train_alias.to_parquet(OUT_ALIAS, index=False)
+    print(f"[write] {OUT_ALIAS}  rows={len(train_alias):,}")
 
     fewshot, fewshot_stats = build_fewshot(alias, pool, master)
     OUT_FEWSHOT.write_text(json.dumps(fewshot, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"[write] {OUT_FEWSHOT}  examples={len(fewshot)}  chapters={fewshot_stats['fewshot_chapters']}")
 
-    testset, test_stats = build_testset(pairs, test_descs, master)
     testset.to_parquet(OUT_TESTSET, index=False)
     print(f"[write] {OUT_TESTSET}  rows={len(testset):,}")
 

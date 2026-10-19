@@ -3,27 +3,42 @@ from __future__ import annotations
 
 import pathlib
 import pickle
+from collections.abc import Iterator
 
 import pandas as pd
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 ENRICHED = pathlib.Path("data/enriched")
 
 
+def split_notification(text: str, chunk_size: int = 1500, overlap: int = 200) -> Iterator[str]:
+    if chunk_size <= 0 or not 0 <= overlap < chunk_size:
+        raise ValueError("Require chunk_size > 0 and 0 <= overlap < chunk_size")
+    start = 0
+    while start < len(text):
+        end = min(start + chunk_size, len(text))
+        if end < len(text):
+            for separator in ("\n\n", "\n", ". ", " "):
+                boundary = text.rfind(separator, start + chunk_size // 2, end)
+                if boundary >= 0:
+                    end = boundary + len(separator)
+                    break
+        chunk = text[start:end].strip()
+        if chunk:
+            yield chunk
+        if end == len(text):
+            break
+        start = max(start + 1, end - overlap)
+
+
 def chunk_notifications(out_dir: pathlib.Path) -> dict:
     ntfns = pd.read_parquet(out_dir / "notifications.parquet")
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1500,
-        chunk_overlap=200,
-        separators=["\n\n", "\n", ". ", " ", ""],
-    )
     rows: list[dict] = []
     for r in ntfns.itertuples(index=False):
         body = r.full_text or ""
         if not body:
             continue
-        for idx, chunk in enumerate(splitter.split_text(body)):
+        for idx, chunk in enumerate(split_notification(body)):
             rows.append({
                 "ntfn_id": r.ntfn_id,
                 "ntfn_type": r.ntfn_type,

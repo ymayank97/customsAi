@@ -3,8 +3,7 @@
 Customs Bills of Entry contain very noisy free-text:
     - Unicode punctuation, smart quotes, NBSP, soft hyphens, BOMs
     - HSN/CTH codes embedded ("HSN: 84713010", "CTH: 8471 30 10")
-    - Quantity / unit fragments ("100 PCS", "QTY: 50 NOS", "500 KG")
-    - Trader codes ("PART NO XYZ-123", "MODEL ABC-99/A")
+    - Shipment count fragments ("100 PCS", "QTY: 50 NOS")
     - Repeated boilerplate ("MAKE IN INDIA", "AS PER INVOICE", "FOC", "FREIGHT")
     - Mixed casing, multi-spaces, trailing colons / dashes
 
@@ -12,8 +11,10 @@ These confuse both TF-IDF and BERT chapter classifiers. This module exposes
 ``clean_description`` which produces a stable canonical form suitable for both
 training data and inference queries.
 
-The function is intentionally conservative: it preserves the meaningful product
-words and only strips structural / numeric noise. It is idempotent and pure.
+Product measurements, composition, end use, and part/model identifiers are
+classification evidence and must survive cleaning. Only explicit declaration
+codes, shipment counts, and known boilerplate are removed. It is idempotent
+and pure.
 """
 from __future__ import annotations
 
@@ -67,55 +68,45 @@ _PUNCT_MAP = {
 # Boilerplate fragments we strip wholesale (case-insensitive substring match).
 _BOILERPLATE = [
     r"as\s*per\s*invoice", r"as\s*per\s*packing\s*list", r"make\s*in\s*india",
-    r"made\s*in\s*[a-z ]+", r"country\s*of\s*origin\s*[:\-]?\s*[a-z ]+",
     r"freight\s*charges?", r"insurance\s*charges?", r"foc\b",
     r"\bfor\s*reference\s*only\b", r"\bsample\s*not\s*for\s*sale\b",
     r"\bno\s*commercial\s*value\b", r"\bgift\s*item\b",
-    r"\bdetails?\s*as\s*per\s*[a-z ]+", r"\bbrand\s*[:\-]\s*[a-z0-9 ]+",
     r"\bp\.?o\.?\s*no\.?\s*[a-z0-9\-/]+",
     r"\binvoice\s*no\.?\s*[a-z0-9\-/]+",
     r"\bb/?l\s*no\.?\s*[a-z0-9\-/]+",
     # Customs-specific noise that obscures the real head/modifier split.
     r"\bfor\s*captive\s*(?:consumption|use|requirement)\b",
     r"\bfor\s*own\s*(?:consumption|use|requirement)\b",
-    r"\bfor\s*resale\b", r"\bfor\s*industrial\s*use\b",
+    r"\bfor\s*resale\b",
     r"\bfor\s*trading\s*purpose\b",
 ]
 
-# Quantity / measurement noise — numbers next to a unit token.
-# Order matters: longer units first.
-_UNIT_TOKENS = (
-    "kgs?|kilograms?|grams?|gms?|tonnes?|tons?|"
-    "ltrs?|litres?|liters?|millilitres?|millilitre|ml|cl|"
-    "metres?|meters?|mtrs?|mts?|cms?|mm|"
-    "pcs|pieces?|nos?|units?|sets?|pairs?|dozens?|cartons?|cases?|boxes?|"
-    "rolls?|bags?|bundles?|packets?|drums?|bottles?|cans?"
+# Remove explicit piece counts, never physical measurements or product nouns
+# such as pairs, sets, rolls, and bottles. A weight/capacity may be decisive.
+_COUNT_UNIT_TOKENS = "pcs|pieces?|nos?|units?"
+_QTY_RE = re.compile(rf"\b\d+(?:[.,]\d+)?\s*(?:{_COUNT_UNIT_TOKENS})\b", re.IGNORECASE)
+_QTY_PREFIX_RE = re.compile(
+    rf"\b(?:qty|quantity)\s*[:\-]?\s*\d+(?:[.,]\d+)?\s*(?:{_COUNT_UNIT_TOKENS})\b",
+    re.IGNORECASE,
 )
-_QTY_RE = re.compile(rf"\b\d+(?:[.,]\d+)?\s*({_UNIT_TOKENS})\b", re.IGNORECASE)
-_QTY_PREFIX_RE = re.compile(rf"\b(qty|quantity|weight|wt)\s*[:\-]?\s*\d+(?:[.,]\d+)?\s*({_UNIT_TOKENS})?\b", re.IGNORECASE)
 
 # Embedded HSN/CTH/HS codes.
 _CODE_RE = re.compile(
-    r"\b(?:hsn|hs\s*code|cth|chapter|customs\s*tariff(?:\s*heading)?)\s*[:\-]?\s*\d[\d\s]{2,}",
+    r"\bchapter\s*[:\-]?\s*\d{2}(?!\d)|"
+    r"\b(?:hsn|hs\s*code|cth|customs\s*tariff(?:\s*heading)?)\s*[:\-]?\s*"
+    r"(?:\d{4}(?:[. ]+\d{2}(?![\w%]|\s*%)){1,2}|"
+    r"\d{2}(?:[. ]+\d{2}(?![\w%]|\s*%)){1,3}|\d{2,10}(?![\w%]))",
     re.IGNORECASE,
 )
-# Standalone 6-10 digit codes (likely tariff codes).
-_LONG_DIGITS_RE = re.compile(r"\b\d{6,12}\b")
-
-# Part numbers like "ABC-123/X4" — drop tokens that are mostly digits + dashes.
-_PART_NO_RE = re.compile(
-    r"\b(?:part|model|catalog(?:ue)?|item|article|ref|sku|p\.?n\.?|cat\.?\s*no\.?)\s*[:\-]?\s*[a-z0-9][a-z0-9\-/_]{2,}",
-    re.IGNORECASE,
-)
-_GENERIC_CODE_TOKEN_RE = re.compile(r"\b(?=[a-z0-9\-/_]{4,}\b)(?=[^a-z]*\d)[a-z0-9\-/_]+\b", re.IGNORECASE)
-
-# Punctuation we want to flatten to space (keep / and - inside words for now,
-# we'll collapse hyphens at the end).
-_PUNCT_FLATTEN_RE = re.compile(r"[(){}\[\]<>;,.:!?\"'`*~|+=]")
+# Preserve decimal punctuation, percentages, dimensions, ranges, and comparison
+# operators. Flatten sentence punctuation without turning 0.5 into "0 5".
+_PUNCT_FLATTEN_RE = re.compile(r"[(){}\[\];:!?\"'`~|]")
+_LEADING_DECIMAL_RE = re.compile(r"(?<![\w.])\.(?=\d)")
+_NON_NUMERIC_PUNCT_RE = re.compile(r"(?<!\d)[.,]|[.,](?!\d)")
 
 # Multiple spaces or stray dashes.
 _MULTI_SPACE_RE = re.compile(r"\s+")
-_DASHES_RE = re.compile(r"\s*-\s*")
+_DASHES_RE = re.compile(r"(?<!\w)-+(?!\w)")
 _LEADING_TRAILING_PUNCT_RE = re.compile(r"^[\-\s/]+|[\-\s/]+$")
 
 
@@ -141,28 +132,24 @@ def clean_description(text: str | None) -> str:
 
     s = _normalise_unicode(text).lower()
 
-    # Strip embedded codes and quantities first (need original spacing).
+    # Strip only explicitly labelled codes and piece counts. Bare numbers and
+    # mixed alphanumeric tokens can be specifications, grades, or identifiers.
     s = _CODE_RE.sub(" ", s)
-    s = _PART_NO_RE.sub(" ", s)
     s = _QTY_PREFIX_RE.sub(" ", s)
     s = _QTY_RE.sub(" ", s)
     for pat in _BOILERPLATE:
         s = re.sub(pat, " ", s, flags=re.IGNORECASE)
-    s = _LONG_DIGITS_RE.sub(" ", s)
 
-    # Collapse remaining structural punctuation to spaces.
+    # Keep decimal values, including the common shorthand ".5 mm".
+    s = _LEADING_DECIMAL_RE.sub("0.", s)
+    s = _NON_NUMERIC_PUNCT_RE.sub(" ", s)
     s = _PUNCT_FLATTEN_RE.sub(" ", s)
     s = _DASHES_RE.sub(" ", s)
 
-    # Drop pure-code-looking tokens left over (mix of digits / letters / dashes).
+    # Discard stray punctuation, not product specifications.
     tokens = []
     for tok in s.split():
-        if len(tok) >= 4 and any(ch.isdigit() for ch in tok) and any(ch.isalpha() for ch in tok):
-            # likely a part / model code
-            continue
-        if tok.isdigit() and len(tok) >= 3:
-            continue
-        if all(not ch.isalnum() for ch in tok):
+        if not any(ch.isalnum() for ch in tok) and tok not in {"<", ">", "<=", ">=", "=", "+", "%", "×"}:
             continue
         tokens.append(tok)
     s = " ".join(tokens)
@@ -222,15 +209,17 @@ def normalize_for_matching(text: str | None) -> str:
     base = expand_abbreviations(clean_description(text)) or ""
     if not base:
         return ""
-    tokens = re.findall(r"[a-z0-9]+", base.lower())
-    stems = [stem_token(t) for t in tokens if len(t) > 1]
+    # BM25 and alias keys must also retain decimals and single-digit values or
+    # units; otherwise descriptions distinguished by cleaning collapse again.
+    tokens = re.findall(r"[<>]=?|=|[a-z0-9]+(?:[.,]\d+)*%?", base.lower())
+    stems = [stem_token(t) for t in tokens]
     return " ".join(stems)
 
 
 def token_set_for_overlap(text: str | None) -> set[str]:
-    """Set of stemmed tokens (length ≥ 3) for Jaccard-style condition matching."""
+    """Informative stems and numeric specifications for condition matching."""
     s = normalize_for_matching(text)
-    return {t for t in s.split() if len(t) >= 3}
+    return {t for t in s.split() if len(t) >= 3 or any(ch.isdigit() for ch in t)}
 
 
 # ----------------------------------------------------------------------------
@@ -281,8 +270,8 @@ def extract_head_noun(query: str) -> tuple[str, str]:
     (before the first modifier-introducer) and ``modifier`` is whatever
     came after.  Returns ``(cleaned_query, "")`` when no pattern is found.
 
-    Both pieces are cleaned with :func:`clean_description` first so quantity
-    noise / part numbers / boilerplate don't bleed into the split.
+    Both pieces are cleaned with :func:`clean_description` first so shipment
+    counts and boilerplate don't bleed into the split; specifications remain.
     """
     if not query:
         return ("", "")

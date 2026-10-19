@@ -111,8 +111,8 @@ function UploadInner() {
   }, [jobId, phase, router]);
 
   const handleFile = useCallback(async (f: File) => {
-    if (!/\.xlsx?$/i.test(f.name)) {
-      setError("Please choose an Excel file (.xlsx or .xls).");
+    if (!/\.xlsx$/i.test(f.name)) {
+      setError("Please choose an Excel file in .xlsx format.");
       return;
     }
     const MAX_BYTES = 10 * 1024 * 1024;
@@ -201,7 +201,7 @@ function UploadInner() {
             <input
               ref={inputRef}
               type="file"
-              accept=".xlsx,.xls"
+              accept=".xlsx"
               onChange={onChange}
               className="hidden"
             />
@@ -218,7 +218,7 @@ function UploadInner() {
                 Select file
               </span>
               <p className="mt-6 text-[13px] text-ink-muted">
-                Excel files (.xlsx, .xls) up to 10&nbsp;MB
+                Excel files (.xlsx) up to 10&nbsp;MB
               </p>
             </div>
           </label>

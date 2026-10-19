@@ -52,7 +52,7 @@ CRITICAL LEAF-TEXT RULE: a 6-digit sub-heading description can be misleading. Be
 
 The importer's declared code is tagged ``is_declared_by_importer: true`` (and may be tagged ``legally_excluded: true`` if a docket note already rules it out). Treat it as the hypothesis to CONFIRM or REBUT explicitly.
 
-CONFORMAL SET: customs classification is often genuinely ambiguous. Besides the single chosen ``cth``, output ``conformal_set`` — the list of candidate codes you cannot confidently rule out for these goods (include the chosen code). A singleton means high confidence; 2-3 codes means the row is contestable and should be human-reviewed.
+AMBIGUITY SET: besides the chosen ``cth``, output ``conformal_set`` — the list of candidate codes you cannot rule out for these goods (include the chosen code). This field is an uncalibrated ambiguity set, with no statistical coverage guarantee. Do not infer high confidence from a singleton when product facts are missing.
 
 OUTPUT — a JSON array, one object per input id, with these exact keys:
   • id              (string)
@@ -74,9 +74,8 @@ _FEWSHOT_LOCK = threading.Lock()
 _FEWSHOT_CACHE: list[dict] | None = None
 
 
-def _load_fewshot(n: int = 6) -> list[dict]:
-    """A small chapter-diverse subset of audit-mined exemplars to prime the
-    adjudicator (one per distinct chapter, capped at ``n``). PII-free."""
+def _load_fewshot(n: int = 6, headings: set[str] | None = None) -> list[dict]:
+    """Use only expert-labelled examples with provenance, relevant to the candidate headings."""
     global _FEWSHOT_CACHE
     with _FEWSHOT_LOCK:
         if _FEWSHOT_CACHE is None:
@@ -85,18 +84,21 @@ def _load_fewshot(n: int = 6) -> list[dict]:
                 raw = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
             except Exception:
                 raw = []
-            by_chapter: dict[str, dict] = {}
+            examples = []
             for ex in raw:
-                ch = str(ex.get("chapter") or "")[:2]
-                if ch and ch not in by_chapter:
-                    by_chapter[ch] = {
+                gold = str(ex.get("gold_cth") or "").strip()
+                source = str(ex.get("label_source") or "").strip()
+                if len(gold) == 8 and gold.isdigit() and source:
+                    examples.append({
                         "description": ex.get("description", "")[:200],
-                        "correct_cth": ex.get("declared_cth", ""),
-                        "heading": ex.get("heading", ""),
+                        "correct_cth": gold,
+                        "label_source": source,
+                        "heading": gold[:4],
                         "leaf_text": (ex.get("leaf_text") or "")[:200],
-                    }
-            _FEWSHOT_CACHE = list(by_chapter.values())
-    return _FEWSHOT_CACHE[:n]
+                    })
+            _FEWSHOT_CACHE = examples
+    relevant = [ex for ex in _FEWSHOT_CACHE if not headings or ex["heading"] in headings]
+    return relevant[:n]
 
 
 CHAT_SYSTEM = """You are a senior Indian Customs auditing assistant. Use ONLY the provided CTH context to answer concisely (under 120 words). Cite specific 8-digit codes when relevant. If the context does not contain the answer, say so plainly.
@@ -154,7 +156,7 @@ def _format_user_message(items: list[dict]) -> str:
                 # When a candidate is the importer's declared CTH (injected
                 # because retrieval missed it), label it so the LLM treats
                 # it as the choice to confirm or rebut.
-                "is_declared_by_importer": c.get("source") == "declared_cth",
+                "is_declared_by_importer": cth == it.get("declared_cth"),
                 # Stage 2 marked this candidate as ruled out by a hard
                 # exclusion note (kept in the set only so the LLM rebuts it).
                 "legally_excluded": bool(c.get("legal_pruned")),
@@ -195,9 +197,10 @@ def _format_user_message(items: list[dict]) -> str:
             "candidate_headings": heading_buckets,
         })
 
-    fewshot = _load_fewshot()
+    headings = {c["cth"][:4] for it in items for c in it.get("candidates", [])}
+    fewshot = _load_fewshot(headings=headings)
     fewshot_block = (
-        f"WORKED EXAMPLES (chapter-diverse, for grounding the leaf-text rule):\n"
+        f"EXPERT-LABELLED EXAMPLES (with provenance, relevant to these candidate headings):\n"
         f"{json.dumps(fewshot, indent=2)}\n\n" if fewshot else ""
     )
     return (
@@ -418,8 +421,6 @@ class HeuristicClassifier:
         for it in items:
             # Prefer candidates NOT ruled out by Stage-2 hard exclusions.
             cands = [c for c in it.get("candidates", []) if not c.get("legal_pruned")]
-            if not cands:
-                cands = it.get("candidates", [])
             if cands:
                 top = cands[0]
                 bcd = top.get("bcd_effective")

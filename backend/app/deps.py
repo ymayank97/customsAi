@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from backend.app.auth_token import decode_access_token
 from backend.app.config import settings
 from backend.app.db import User, get_engine
+from backend.app.membership import capabilities
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -36,3 +37,11 @@ def get_current_user(
     if u is None:
         raise HTTPException(status_code=401, detail="Unknown user")
     return u
+
+
+def require_premium_user(current: User | None = Depends(get_current_user)) -> User:
+    if current is None:
+        raise HTTPException(401, "Sign in with an approved premium reviewer account to save reviews.")
+    if not capabilities(current)["can_label_rows"]:
+        raise HTTPException(403, "Premium reviewer access is required. Contact your administrator for approval.")
+    return current

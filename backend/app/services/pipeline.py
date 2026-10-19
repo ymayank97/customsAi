@@ -23,13 +23,14 @@ precedent_citations, and revenue_basis.
 """
 from __future__ import annotations
 
+import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
 from backend.app.config import settings
-from backend.app.core.llm_client import get_classifier
+from backend.app.core.llm_client import LLMClassifier, get_classifier
 from backend.app.core.logger import get as get_logger
 from backend.app.services import (
     custada_validator,
@@ -58,10 +59,11 @@ def process_rows(
     rows: list[dict],
     progress: Callable[[dict], None] | None = None,
     batch_size: int | None = None,
+    classifier: LLMClassifier | None = None,
 ) -> list[dict]:
     batch_size = batch_size or settings.batch_size
     total = len(rows)
-    classifier = get_classifier()
+    classifier = classifier if classifier is not None else get_classifier()
     results: dict[int, dict] = {}
     results_lock = threading.Lock()
     started_at = time.time()
@@ -108,6 +110,8 @@ def process_rows(
     enriched: dict[int, dict] = {}
     cands_per_row: dict[int, list[dict]] = {}
     docket_per_row: dict[int, dict] = {}
+    retrieval_cache: dict[tuple[str, str], dict] = {}
+    adjudication_groups: dict[tuple, list[dict]] = {}
     for i, r in enumerate(rows):
         if i % 25 == 0:
             report("retrieve", i)
@@ -115,18 +119,27 @@ def process_rows(
         ctx = retriever.enrich_row(r, siblings=siblings)
         enriched[r["row_idx"]] = ctx
         try:
-            cands = retriever.generate_candidates(
-                ctx["item_description"], declared_cth=ctx["declared_cth"],
-            )
-            legal = legal_constraints.apply(
-                ctx["item_description"], cands, declared_cth=ctx["declared_cth"],
-            )
+            retrieval_key = (ctx["item_description"], ctx["declared_cth"])
+            legal = retrieval_cache.get(retrieval_key)
+            if legal is None:
+                cands = retriever.generate_candidates(
+                    ctx["item_description"], declared_cth=ctx["declared_cth"],
+                )
+                legal = legal_constraints.apply(
+                    ctx["item_description"], cands, declared_cth=ctx["declared_cth"],
+                )
+                retrieval_cache[retrieval_key] = legal
             cands_per_row[r["row_idx"]] = legal["candidates"]
             docket_per_row[r["row_idx"]] = legal
         except Exception as e:
             log.exception(f"stage0-2 failed for row {r['row_idx']}: {e}")
             cands_per_row[r["row_idx"]] = []
             docket_per_row[r["row_idx"]] = {"candidates": [], "docket": [], "pruned": [], "summary": "stage error"}
+        adjudication_key = (
+            ctx["item_description"], ctx["declared_cth"], ctx["declared_bcd"],
+            ctx["declared_notification"], json.dumps(ctx.get("siblings", []), sort_keys=True),
+        )
+        adjudication_groups.setdefault(adjudication_key, []).append(r)
     log.info("candidate generation done",
              extra={"count": total, "phase": "retrieve", "ms": int((time.time() - t0) * 1000)})
     report_partial("retrieve")
@@ -135,11 +148,16 @@ def process_rows(
     # Phase string kept as ``tier3_llm`` for progress-UI compatibility; this is
     # the LLM-bearing phase the frontend's progress timeline already knows.
     ADJ_PHASE = "tier3_llm"
-    batches: list[list[dict]] = [rows[b:b + batch_size] for b in range(0, len(rows), batch_size)]
+    representatives = [group[0] for group in adjudication_groups.values()]
+    group_by_id = {group[0]["row_idx"]: group for group in adjudication_groups.values()}
+    batches = [representatives[b:b + batch_size] for b in range(0, len(representatives), batch_size)]
     report(ADJ_PHASE, 0)
     llm_degraded = {"v": False}
 
     def run_batch(batch: list[dict]) -> int:
+        from backend.app.core.llm_client import HeuristicClassifier
+
+        adjudicator_unavailable = isinstance(classifier, HeuristicClassifier)
         items_for_llm = []
         for r in batch:
             ctx = enriched[r["row_idx"]]
@@ -167,21 +185,25 @@ def process_rows(
             log.warning(f"adjudicator batch failed, degrading to top candidate: {e}")
             llm_degraded["v"] = True
             report_partial(ADJ_PHASE, llm_degraded=True)
-            from backend.app.core.llm_client import HeuristicClassifier
+            adjudicator_unavailable = True
             classifications = HeuristicClassifier().classify_batch(items_for_llm)
 
         by_id = {}
         for c in classifications:
-            d = c if isinstance(c, dict) else c.dict()
+            d = c if isinstance(c, dict) else c.model_dump()
             by_id[d["id"]] = d
 
         for r in batch:
             cls = by_id.get(str(r["row_idx"]))
-            result = _finalise_row(r, enriched[r["row_idx"]], cls,
-                                   cands_per_row.get(r["row_idx"], []),
-                                   docket_per_row.get(r["row_idx"], {}))
-            with results_lock:
-                results[r["row_idx"]] = result
+            for member in group_by_id[r["row_idx"]]:
+                member_id = member["row_idx"]
+                member_cls = {**cls, "id": str(member_id)} if cls else None
+                result = _finalise_row(member, enriched[member_id], member_cls,
+                                       cands_per_row.get(member_id, []),
+                                       docket_per_row.get(member_id, {}),
+                                       adjudicator_unavailable=adjudicator_unavailable)
+                with results_lock:
+                    results[member_id] = result
         return len(batch)
 
     if batches:
@@ -207,10 +229,12 @@ def process_rows(
 # --- Stage 3-5 finalisation per row -----------------------------------------
 
 def _finalise_row(r: dict, ctx: dict, cls: dict | None,
-                  cands: list[dict], legal: dict) -> dict:
+                  cands: list[dict], legal: dict,
+                  adjudicator_unavailable: bool = False) -> dict:
     """Validate (Stage 4 hard-block), precedent (Stage 4), revenue (Stage 5)."""
-    llm_failed = cls is None
-    candidate_cths = [c["cth"] for c in cands]
+    llm_failed = cls is None or adjudicator_unavailable
+    eligible = [c for c in cands if not c.get("legal_pruned")]
+    candidate_cths = [c["cth"] for c in eligible]
 
     if cls:
         cth_proposed = cls.get("cth", "")
@@ -221,9 +245,11 @@ def _finalise_row(r: dict, ctx: dict, cls: dict | None,
         citations = cls.get("citations") or []
         gir_path = cls.get("gir_path", "")
     else:
-        top = cands[0] if cands else None
+        top = eligible[0] if eligible else None
         cth_proposed = top["cth"] if top else ""
-        bcd_proposed = (top.get("bcd_effective") or top.get("bcd_statutory")) if top else None
+        bcd_proposed = top.get("bcd_effective") if top else None
+        if bcd_proposed is None and top:
+            bcd_proposed = top.get("bcd_statutory")
         reasoning = "No adjudicator output; used top legally-surviving candidate."
         confidence = 0.4 if top else 0.0
         conformal_set = [cth_proposed] if cth_proposed else []
@@ -231,11 +257,16 @@ def _finalise_row(r: dict, ctx: dict, cls: dict | None,
         gir_path = ""
 
     # Stage 4a — HARD BLOCK invalid/invented CTH (the 85442010-class bug).
-    fallback_cth = cands[0]["cth"] if cands else None
+    fallback_cth = eligible[0]["cth"] if eligible else None
     v = custada_validator.validate(cth_proposed, bcd_proposed, fallback_cth,
                                    candidate_cths=candidate_cths)
     cth_final = v["cth_final"]
     manual_queue = v.get("manual_queue", False)
+    conformal_set = list(dict.fromkeys(c for c in conformal_set if c in candidate_cths))
+    if cth_final and cth_final not in conformal_set:
+        conformal_set.insert(0, cth_final)
+    if v.get("hallucination") or llm_failed:
+        confidence = min(confidence, 0.4)
 
     master_row = custada_validator.get_master_row(cth_final) or {} if cth_final else {}
 
@@ -293,11 +324,17 @@ def _finalise_row(r: dict, ctx: dict, cls: dict | None,
         review_flags.append("no_precedent")
     if llm_failed:
         review_flags.append("adjudicator_unavailable")
+    if v.get("hallucination"):
+        review_flags.append("adjudicator_overridden")
     # High-differential ambiguous rows always reach the queue; revenue-neutral
     # reclassifications never do.
-    if (fraud.revenue_at_risk or 0) > 0 and ("ambiguous_classification" in review_flags or no_precedent):
+    if (fraud.revenue_at_risk or 0) > 0 and (
+        "ambiguous_classification" in review_flags or no_precedent
+        or llm_failed or v.get("hallucination")
+    ):
         if "manual_review" not in review_flags:
             review_flags.append("manual_review")
+    manual_queue = manual_queue or "manual_review" in review_flags
 
     final = {
         "cth_final": cth_final,
@@ -415,13 +452,14 @@ def reevaluate_one(row: dict, top_k: int | None = None,
     }
     try:
         cls = classifier.reevaluate(item)
-        cls_dict = cls.dict() if not isinstance(cls, dict) else cls
+        cls_dict = cls.model_dump() if not isinstance(cls, dict) else cls
     except Exception as e:
         log.warning(f"reevaluate adjudicator failed, falling back: {e}")
         cls_dict = None
 
     result = _finalise_row(
         {**row, "row_idx": row.get("row_idx", 0)}, ctx, cls_dict, cands, legal,
+        adjudicator_unavailable=classifier.__class__.__name__ == "HeuristicClassifier",
     )
     final = result["final"]
     return {
@@ -562,7 +600,7 @@ def _build_result(r: dict, ctx: dict, final: dict, fraud, rr: dict,
         "be_no": ctx.get("be_no", ""),
         "assess_val": ctx.get("assess_val"),
         "final": final,
-        "fraud": fraud.dict(),
+        "fraud": fraud.model_dump(),
         "review_flags": review_flags,
         "rate_resolution": rate_resolution_out,
         "retrieval_diagnostics": retrieval_diagnostics,

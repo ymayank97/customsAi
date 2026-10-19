@@ -16,6 +16,10 @@
   body {
     font-family: var(--font-inter), system-ui, sans-serif;
   }
+  :focus-visible {
+    outline: 2px solid theme(colors.accent.DEFAULT);
+    outline-offset: 3px;
+  }
   ::selection {
     background: theme(colors.accent.soft);
     color: theme(colors.ink.DEFAULT);
@@ -41,7 +45,7 @@
     @apply transition-all duration-200 hover:border-line2 hover:shadow-lift;
   }
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary {
     @apply btn bg-ink text-white hover:bg-ink-soft active:scale-[.98];
@@ -110,4 +114,8 @@
 }
 .indet-bar {
   animation: indet 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
 }

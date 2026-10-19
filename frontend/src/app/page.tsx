@@ -57,9 +57,25 @@ function Home() {
           </Link>
         </div>
         <p className="mt-4 text-[13px] text-ink-muted">
-          Works with .xlsx and .xls files up to 10&nbsp;MB.
+          Start with a Bill of Entry in .xlsx format.
         </p>
       </section>
+
+      <section aria-label="How to review an audit" className="mt-12 grid gap-4 sm:grid-cols-3">
+        {[
+          ["1", "Upload", "Choose your Excel file. We read the item descriptions, tariff codes and duty rates."],
+          ["2", "Review", "Open the items needing attention and compare the suggested code with the declaration."],
+          ["3", "Record", user?.can_label_rows ? "Save your verified decision. It appears in Reviewed items for future training." : "Download your audit report. Premium reviewers can also save verified item decisions."],
+        ].map(([step, title, detail]) => <div key={step} className="surface p-5">
+          <span className="text-xs font-semibold text-accent">STEP {step}</span>
+          <h2 className="mt-2 text-lg font-semibold">{title}</h2>
+          <p className="mt-2 text-sm leading-relaxed text-ink-soft">{detail}</p>
+        </div>)}
+      </section>
+
+      {user?.can_label_rows && <Link href="/reviewed-items" className="mt-6 surface surface-hover flex items-center justify-between gap-4 p-5">
+        <div><p className="font-semibold">Your reviewed items</p><p className="mt-1 text-sm text-ink-soft">Find saved decisions and download verified examples for training.</p></div><ArrowRight className="h-5 w-5 shrink-0 text-accent" />
+      </Link>}
 
       {/* Recent audits */}
       <section className="mt-16 animate-slide-up">

@@ -13,7 +13,7 @@ export function TopBar() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [healthErr, setHealthErr] = useState(false);
   const [healthStarting, setHealthStarting] = useState(false);
-  const { status, cfg, logout, user } = useAuth();
+  const { status, logout, user } = useAuth();
 
   useEffect(() => {
     let alive = true;
@@ -70,14 +70,15 @@ export function TopBar() {
           </span>
           <span className="flex items-baseline gap-2">
             <span className="text-[15px] font-semibold tracking-tight">customsAI</span>
-            <span className="hidden sm:inline text-xs text-ink-muted">CTH fraud audit</span>
+            <span className="hidden sm:inline text-xs text-ink-muted">Customs review</span>
           </span>
         </Link>
 
-        <nav className="hidden md:flex items-center gap-1 text-sm">
+        <nav aria-label="Main navigation" className="hidden md:flex items-center gap-1 text-sm">
           <NavLink href="/" active={pathname === "/"}>Home</NavLink>
-          <NavLink href="/upload" active={pathname?.startsWith("/upload") ?? false}>Upload</NavLink>
-          <NavLink href="/jobs" active={pathname?.startsWith("/jobs") ?? false}>Jobs</NavLink>
+          <NavLink href="/upload" active={pathname?.startsWith("/upload") ?? false}>New audit</NavLink>
+          <NavLink href="/jobs" active={pathname?.startsWith("/jobs") ?? false}>Past audits</NavLink>
+          {user?.can_label_rows && <NavLink href="/reviewed-items" active={pathname === "/reviewed-items"}>Reviewed items</NavLink>}
         </nav>
 
         <div className="flex items-center gap-3">
@@ -97,12 +98,18 @@ export function TopBar() {
           {status === "loading" ? (
             <div className="h-8 w-8 rounded-full bg-line/60 animate-pulse" />
           ) : status === "signed-in" ? (
+            <>
+            <span className={cn("hidden lg:inline-flex rounded-full px-3 py-1 text-xs font-medium", user?.can_label_rows ? "bg-accent-soft text-accent" : "bg-surface text-ink-soft border border-line")}>
+              {user?.is_admin ? "Administrator" : user?.can_label_rows ? "Premium reviewer" : "Standard"}
+            </span>
             <UserMenu
               email={user?.email ?? ""}
               name={user?.name ?? ""}
               picture={user?.picture ?? ""}
               onSignOut={logout}
+              accessLabel={user?.is_admin ? "Administrator · Premium reviewer" : user?.can_label_rows ? "Premium reviewer" : "Standard access"}
             />
+            </>
           ) : status === "signed-out" && pathname !== "/login" ? (
             <Link
               href="/login"
@@ -113,6 +120,12 @@ export function TopBar() {
           ) : null}
         </div>
       </div>
+      {pathname !== "/login" && <nav aria-label="Mobile navigation" className="container-wide flex gap-1 overflow-x-auto pb-2 text-sm md:hidden">
+        <NavLink href="/" active={pathname === "/"}>Home</NavLink>
+        <NavLink href="/upload" active={pathname?.startsWith("/upload") ?? false}>New audit</NavLink>
+        <NavLink href="/jobs" active={pathname?.startsWith("/jobs") ?? false}>Past audits</NavLink>
+        {user?.can_label_rows && <NavLink href="/reviewed-items" active={pathname === "/reviewed-items"}>Reviewed items</NavLink>}
+      </nav>}
     </header>
   );
 }
@@ -121,8 +134,9 @@ function NavLink({ href, active, children }: { href: string; active: boolean; ch
   return (
     <Link
       href={href}
+      aria-current={active ? "page" : undefined}
       className={cn(
-        "rounded-md px-2.5 py-1.5 transition-colors",
+        "whitespace-nowrap rounded-md px-2.5 py-1.5 transition-colors",
         active ? "text-ink bg-page" : "text-ink-muted hover:text-ink hover:bg-page"
       )}
     >
@@ -136,11 +150,13 @@ function UserMenu({
   name,
   picture,
   onSignOut,
+  accessLabel,
 }: {
   email: string;
   name: string;
   picture: string;
   onSignOut: () => void;
+  accessLabel: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -191,6 +207,7 @@ function UserMenu({
           <div className="px-3.5 py-3 border-b border-line">
             <div className="text-[13px] font-medium truncate">{name || email.split("@")[0]}</div>
             <div className="text-[11px] text-ink-muted truncate">{email}</div>
+            <div className="mt-2 text-xs font-medium text-accent">{accessLabel}</div>
           </div>
           <button
             role="menuitem"

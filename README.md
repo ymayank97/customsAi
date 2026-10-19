@@ -22,7 +22,7 @@ Audit Bills of Entry against the official Indian customs tariff and notification
 │   /api/health    /api/uploads   /api/uploads/{id}{,/results,…}   │
 │   /api/classify/reevaluate    (re-run Stages 1–5)               │
 │   /api/chat                    (SSE streaming + heartbeat)       │
-│   /api/feedback /api/cth/{cth}                                   │
+│   /api/reviews /api/reviews/export /api/cth/{cth}                 │
 │   slowapi rate limits, request-ID middleware, Sentry hooks       │
 └──────────────────────┬───────────────────────────────────────────┘
                        │
@@ -65,6 +65,8 @@ Audit Bills of Entry against the official Indian customs tariff and notification
 
 ## Local development
 
+Approved premium reviewers can now confirm or correct audit rows, save their evidence in `training_labels`, and export unique verified examples from `/reviewed-items`. Configure `PREMIUM_EMAILS` and `ADMIN_EMAILS` on the backend. See [the officer review setup and training workflow](docs/officer-reviews.md).
+
 ### Prerequisites
 - Python 3.10+
 - Node.js 18+ and npm 9+
@@ -106,13 +108,26 @@ Key env vars (full list in `backend/.env.example`):
 
 ```bash
 .venv/Scripts/python.exe -m backend.scripts.run_validation
+# Retrieval by chapter / heading / subheading / item, without declared-code injection or LLM calls:
+.venv/Scripts/python.exe -m backend.scripts.evaluate_retrieval --full
 # Accuracy eval — headline metric is invalid-code rate (target 0):
-.venv/Scripts/python.exe -m backend.scripts.eval_pipeline --full
+.venv/Scripts/python.exe -m backend.scripts.eval_pipeline --full --offline
 # Classification regression suite:
 .venv/Scripts/python.exe -m backend.scripts.test_regression_classification
 ```
 
 > Full Stage-3 Opus accuracy requires `ANTHROPIC_API_KEY`; without it the pipeline runs in heuristic mode.
+
+Declared-code agreement is a weak reference. Verified accuracy requires expert labels; see [the accuracy and data plan](docs/accuracy-and-data.md). Retrieval evaluation also checks overlap with aliases and few-shot examples and reports tariff-catalog and live BE rows separately. Expert CSV input uses `item_description,gold_cth,label_source`; start with [the template](data/gold_labels.template.csv).
+
+After changing the PDF parser, rebuild the derived artifacts:
+
+```bash
+.venv/Scripts/python.exe -m backend.app.scripts.build_enriched_dataset --only 2,7,8,9,10,12
+.venv/Scripts/python.exe -m backend.app.scripts.mine_audit_data --preserve-test-set
+```
+
+`--preserve-test-set` retains the existing evaluation rows while excluding their matching keys from rebuilt aliases and examples. Without it, mining creates a new deterministic split. Restart a running backend after rebuilding its data.
 
 ### 4. Frontend setup
 
@@ -182,8 +197,9 @@ Stop: `docker compose down`. Compose binds both services to `127.0.0.1` only.
 | `GET` | `/api/uploads/{id}/download` | required | Annotated Excel download |
 | `POST` | `/api/classify/reevaluate` | required | Single-row re-audit (Stages 1–5). Rate-limited 60/hr. |
 | `POST` | `/api/chat` | required | SSE streaming chat. Rate-limited 30/min. |
-| `POST` | `/api/feedback` | required | Save a corrected CTH (training data) |
-| `GET` | `/api/feedback` | required | List user's labeled feedback |
+| `POST` | `/api/reviews` | premium | Save a verified officer decision |
+| `GET` | `/api/reviews` | premium | List saved reviews and training readiness |
+| `GET` | `/api/reviews/export` | premium | Export deduplicated verified training labels |
 | `GET` | `/api/cth/{cth}` | required | Master row for a specific 8-digit CTH |
 
 ## Folder layout

@@ -36,7 +36,8 @@ log = get_logger(__name__)
 _LOCK = threading.Lock()
 _SINGLETON: "LexicalIndex | None" = None
 
-INDEX_VERSION = 2
+# Rebuild persisted features made before specifications survived cleaning.
+INDEX_VERSION = 4
 
 FUSE_WORD = 0.40
 FUSE_CHAR = 0.25
@@ -258,6 +259,7 @@ def build_index() -> dict:
     cleaned_docs = [clean_description(d) or d.lower() for d in docs]
 
     word_vec = TfidfVectorizer(ngram_range=(1, 2), max_features=60_000,
+                               token_pattern=r"(?u)\b\w+(?:[.,]\d+)*%?",
                                lowercase=True, stop_words="english",
                                min_df=1, sublinear_tf=True)
     word_mat = word_vec.fit_transform(cleaned_docs)
@@ -286,6 +288,7 @@ def build_index() -> dict:
 
     return {
         "version": INDEX_VERSION,
+        "master_fingerprint": _master_fingerprint(),
         "n": len(cths),
         "cths": cths,
         "chapters": np.array([c[:2] for c in cths]),
@@ -302,6 +305,11 @@ def build_index() -> dict:
 
 def _index_path():
     return settings.data_dir / "lexical_index.pkl"
+
+
+def _master_fingerprint() -> tuple[int, int]:
+    stat = (settings.data_dir / "cth_master.parquet").stat()
+    return stat.st_size, stat.st_mtime_ns
 
 
 def build_and_save() -> dict:
@@ -322,7 +330,8 @@ def get_lexical_index() -> LexicalIndex:
                 try:
                     with open(path, "rb") as f:
                         blob = pickle.load(f)
-                    if blob.get("version") != INDEX_VERSION:
+                    if (blob.get("version") != INDEX_VERSION
+                            or blob.get("master_fingerprint") != _master_fingerprint()):
                         blob = None
                 except Exception:
                     log.warning("lexical index unreadable; rebuilding", exc_info=True)

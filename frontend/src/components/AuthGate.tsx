@@ -12,7 +12,7 @@ import { useAuth } from "@/providers/AppProviders";
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { status } = useAuth();
+  const { status, authError, retryAuth } = useAuth();
 
   useEffect(() => {
     if (status === "signed-out") {
@@ -21,6 +21,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     }
   }, [status, pathname, router]);
 
+  if (status === "unavailable") {
+    return <div className="container-narrow py-20"><div className="surface p-8" role="alert">
+      <h1 className="text-xl font-semibold">Unable to connect</h1>
+      <p className="mt-2 text-ink-soft">{authError}</p>
+      <button className="btn-primary mt-5" onClick={retryAuth}>Try again</button>
+    </div></div>;
+  }
   if (status === "loading" || status === "signed-out") {
     return (
       <div className="container-narrow pt-20 pb-24" aria-hidden>

@@ -33,7 +33,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from backend.app.auth_routes import router as auth_router
 from backend.app.config import settings
 from backend.app.core.logger import configure as configure_logging, get as get_logger
-from backend.app.db import User, fail_stale_running_jobs, list_feedback, save_feedback
+from backend.app.db import User, fail_stale_running_jobs
 from backend.app.deps import get_current_user
 from backend.app.jobs import (
     create as create_job,
@@ -41,7 +41,8 @@ from backend.app.jobs import (
     list_all as list_jobs,
     update as update_job,
 )
-from backend.app.schemas.api_requests import ChatBody, FeedbackSubmitBody, ReevaluateBody
+from backend.app.schemas.api_requests import ChatBody, ReevaluateBody
+from backend.app.reviews import router as reviews_router, load_labels
 from backend.app.services import excel_processor, pipeline
 from backend.app.services.chat_service import stream_chat
 from backend.app.services.custada_validator import get_master_row
@@ -213,6 +214,7 @@ def _process_job(job_id: str) -> None:
 # ---- routes -----------------------------------------------------------------
 
 app.include_router(auth_router)
+app.include_router(reviews_router)
 
 
 def _job_scope_user_id(current: User | None) -> int | None:
@@ -349,6 +351,9 @@ def job_results(
     if not j:
         raise HTTPException(404, "Unknown job")
     rows = j.results
+    if current is not None:
+        reviews = {label["row_idx"]: label for label in load_labels(current.id, job_id)}
+        rows = [{**row, "review": reviews.get(row["row_idx"])} for row in rows]
     if fraud_only:
         rows = [r for r in rows if r["fraud"]["is_fraud"]]
     total = len(rows)
@@ -456,29 +461,3 @@ def get_cth(cth: str, current: User | None = Depends(get_current_user)):
     if not row:
         raise HTTPException(404, f"CTH {cth} not found in master")
     return row
-
-
-@app.post("/api/feedback")
-def submit_feedback(body: FeedbackSubmitBody, current: User | None = Depends(get_current_user)):
-    payload = body.model_dump()
-    label = (current.name or current.email) if (current is not None) else ""
-    uid = current.id if current is not None else None
-    row = save_feedback(payload, user_id=uid, user_label=label or "")
-    return {"ok": True, "feedback": row}
-
-
-@app.get("/api/feedback")
-def list_feedback_endpoint(
-    job_id: str | None = None,
-    limit: int = 200,
-    current: User | None = Depends(get_current_user),
-):
-    if settings.auth_enforced and current is None:
-        raise HTTPException(401, "Not authenticated")
-    return {
-        "items": list_feedback(
-            job_id=job_id,
-            limit=int(limit),
-            user_id=current.id if current else None,
-        )
-    }

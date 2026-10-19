@@ -40,6 +40,8 @@ log = get_logger(__name__)
 _LOCK = threading.Lock()
 _MASTER_CACHE = None
 _ALIAS_CACHE: dict[str, list[str]] | None = None
+_ALIAS_TOKENS: dict[str, frozenset[str]] = {}
+_ALIAS_POSTINGS: dict[str, set[str]] = {}
 
 # Stage 1 recall target: deliberately wider than the old TOP_K (8) so the
 # candidate set spans competing chapters and the adjudicator can never be
@@ -74,13 +76,20 @@ def _load_alias_index() -> dict[str, list[str]]:
         df = pd.read_parquet(path)
         idx: dict[str, list[str]] = {}
         for r in df.itertuples(index=False):
-            key = str(getattr(r, "normalized_description", "") or "").strip()
+            key = normalize_for_matching(getattr(r, "normalized_description", ""))
             cth = str(getattr(r, "cth", "") or "").strip()
             if not key or not cth:
                 continue
             idx.setdefault(key, [])
             if cth not in idx[key]:
                 idx[key].append(cth)
+        _ALIAS_TOKENS.clear()
+        _ALIAS_POSTINGS.clear()
+        for key in idx:
+            tokens = frozenset(key.split())
+            _ALIAS_TOKENS[key] = tokens
+            for token in tokens:
+                _ALIAS_POSTINGS.setdefault(token, set()).add(key)
         _ALIAS_CACHE = idx
         return _ALIAS_CACHE
 
@@ -100,10 +109,10 @@ def _alias_candidates(query: str, limit: int = 6) -> list[str]:
         q_toks = set(key.split())
         if q_toks:
             scored: list[tuple[float, str]] = []
-            for k, cths in alias.items():
-                k_toks = set(k.split())
-                if not k_toks:
-                    continue
+            matching_keys = set().union(*(_ALIAS_POSTINGS.get(t, set()) for t in q_toks))
+            for k in sorted(matching_keys):
+                cths = alias[k]
+                k_toks = _ALIAS_TOKENS[k]
                 ov = len(q_toks & k_toks) / len(q_toks | k_toks)
                 if ov >= 0.6:
                     for c in cths:
@@ -143,13 +152,15 @@ def _list(row, name: str) -> list[str]:
     v = _cell(row, name, [])
     if v is None:
         return []
+    if hasattr(v, "tolist"):
+        v = v.tolist()
+    if isinstance(v, (list, tuple)):
+        return [str(x).strip() for x in v if str(x).strip()]
     try:
         if pd.isna(v):
             return []
     except (TypeError, ValueError):
         pass
-    if isinstance(v, (list, tuple)):
-        return [str(x).strip() for x in v if str(x).strip()]
     if isinstance(v, str):
         return [x.strip() for x in v.split(",") if x.strip()]
     return []
@@ -202,7 +213,7 @@ def _candidate_from_row(cth: str, row, *, retrieval_score: float, source: str) -
     applied_notifications = _list(row, "bcd_notifications_applied")
     bcd_statutory = _float(row, "bcd_statutory")
     bcd_effective = _float(row, "bcd_effective")
-    hierarchy = _hierarchy_for_row(row, desc)
+    hierarchy = _hierarchy_for_row(row, _text(row, "description_statutory") or desc)
     return {
         "cth": cth,
         "description": desc,
@@ -235,6 +246,7 @@ def _candidate_from_row(cth: str, row, *, retrieval_score: float, source: str) -
         },
         "retrieval_score": float(retrieval_score),
         "source": source,
+        "is_declared_by_importer": source == "declared_cth",
     }
 
 
@@ -287,6 +299,8 @@ def enrich_row(row: dict, siblings: list[dict] | None = None) -> dict:
             "item_description": s.get("item_description", ""),
             "declared_cth": (s.get("declared_cth") or "").strip(),
         })
+        if len(sib_payload) >= 8:
+            break
     return {
         "row_idx": row.get("row_idx"),
         "item_description": row.get("item_description", ""),
@@ -311,7 +325,8 @@ def generate_candidates(
 ) -> list[dict]:
     """Stage 1: recall-oriented, cross-chapter candidate generation.
 
-    Returns up to ``target`` enriched candidates, every one a real master CTH.
+    Returns ``target`` lexical candidates plus alias and declared-code recall
+    additions, every one a real master CTH.
     Sources, in order of trust: lexical hierarchical search → audit-alias recall
     booster → always-injected declared CTH (tagged). A retrieval margin /
     ambiguity flag is attached to each candidate for downstream routing.
@@ -365,6 +380,7 @@ def generate_candidates(
 
     chapters = sorted({c["chapter"] for c in out})
     for c in out:
+        c["is_declared_by_importer"] = c["cth"] == declared_cth
         c["retrieval_margin"] = margin
         c["retrieval_ambiguous"] = ambiguous
         c["candidate_chapters"] = chapters

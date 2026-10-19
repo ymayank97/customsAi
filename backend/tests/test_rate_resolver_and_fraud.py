@@ -6,6 +6,16 @@ from backend.app.services.rate_resolver import _jaccard, resolve_rate
 from backend.app.services.retriever import _minmax_norm_scores
 
 
+def load_tests(loader, tests, pattern):
+    import unittest
+
+    return unittest.TestSuite(
+        unittest.FunctionTestCase(test)
+        for name, test in sorted(globals().items())
+        if name.startswith("test_") and callable(test)
+    )
+
+
 def test_jaccard():
     assert _jaccard({"a", "b"}, {"b", "c"}) == 1 / 3
     assert _jaccard(set(), {"a"}) == 0.0

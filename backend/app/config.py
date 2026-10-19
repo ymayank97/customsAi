@@ -91,6 +91,12 @@ class Settings:
     google_oauth_client_id: str = field(default_factory=lambda: _env("GOOGLE_OAUTH_CLIENT_ID"))
     jwt_secret: str = field(default_factory=lambda: _env("JWT_SECRET"))
     jwt_exp_days: int = field(default_factory=lambda: int(_env("JWT_EXPIRE_DAYS", "1")))
+    premium_emails: list[str] = field(default_factory=lambda: [
+        email.strip().lower() for email in _env("PREMIUM_EMAILS").split(",") if email.strip()
+    ])
+    admin_emails: list[str] = field(default_factory=lambda: [
+        email.strip().lower() for email in _env("ADMIN_EMAILS").split(",") if email.strip()
+    ])
 
     # Max upload bytes (multipart). Excel row apps: default 50 MB ceiling.
     max_upload_bytes: int = field(default_factory=lambda: int(_env("MAX_UPLOAD_BYTES", str(50 * 1024 * 1024))))

@@ -24,6 +24,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     create_engine,
     inspect,
     select,
@@ -50,6 +51,7 @@ class User(Base):
     email = Column(String(255), nullable=False, index=True)
     name = Column(String(255), default="")
     picture = Column(String(1024), default="")
+    account_tier = Column(String(16), nullable=False, default="standard", server_default="standard")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
     jobs = relationship("AuditJob", back_populates="owner")
@@ -96,6 +98,29 @@ class TrainingFeedback(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
 
+class TrainingLabel(Base):
+    __tablename__ = "training_labels"
+    __table_args__ = (UniqueConstraint("user_id", "job_id", "row_idx", name="uq_training_label_row"),)
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    job_id = Column(String(32), ForeignKey("audit_jobs.id"), nullable=False, index=True)
+    row_idx = Column(Integer, nullable=False)
+    item_description = Column(Text, nullable=False)
+    declared_cth = Column(String(16), default="")
+    predicted_cth = Column(String(16), default="")
+    predicted_bcd = Column(Float, nullable=True)
+    decision = Column(String(24), nullable=False)
+    corrected_cth = Column(String(8), nullable=True)
+    corrected_bcd = Column(Float, nullable=True)
+    reference = Column(Text, nullable=False)
+    reasoning = Column(Text, nullable=False)
+    product_details = Column(Text, default="")
+    reviewer_name = Column(String(255), nullable=False)
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+
+
 def _resolve_database_url() -> str:
     import os
 
@@ -137,6 +162,9 @@ def get_engine():
                 _ENGINE = create_engine(url, future=True, connect_args=connect_args)
                 Base.metadata.create_all(_ENGINE)
                 _ensure_training_feedback_schema(_ENGINE)
+                if "account_tier" not in {c["name"] for c in inspect(_ENGINE).get_columns("users")}:
+                    with _ENGINE.begin() as conn:
+                        conn.execute(text("ALTER TABLE users ADD COLUMN account_tier VARCHAR(16) NOT NULL DEFAULT 'standard'"))
             else:
                 _ENGINE = create_engine(
                     url,

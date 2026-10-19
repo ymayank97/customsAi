@@ -22,6 +22,8 @@ def verify_google_token(credential: str, google_client_id: str) -> dict[str, Any
         raise ValueError("Invalid token issuer")
     if not claims.get("sub"):
         raise ValueError("Missing subject")
+    if claims.get("email_verified") is not True:
+        raise ValueError("Google email is not verified")
     return claims
 
 

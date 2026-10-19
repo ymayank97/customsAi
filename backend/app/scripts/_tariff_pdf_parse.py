@@ -198,6 +198,23 @@ def _parse_tariff_lines(lines: list[str]) -> tuple[list[dict], list[dict]]:
 
     cur8: dict | None = None
     cur_prefix: dict | None = None
+    cur_group: dict | None = None
+    groups: dict[int, str] = {}
+
+    def _depth(text: str) -> int:
+        marker = re.match(r"^([-–—]+)\s*", text)
+        return len(marker.group(1)) if marker else 1
+
+    def _trim_groups(depth: int):
+        for level in list(groups):
+            if level >= depth:
+                del groups[level]
+
+    def _flush_group():
+        nonlocal cur_group
+        if cur_group is not None:
+            groups[cur_group["depth"]] = re.sub(r"\s+", " ", cur_group["text"]).strip()
+            cur_group = None
 
     def _flush8():
         nonlocal cur8
@@ -230,8 +247,10 @@ def _parse_tariff_lines(lines: list[str]) -> tuple[list[dict], list[dict]]:
         if m8:
             _flush8()
             _flush_prefix()
+            _flush_group()
             code = m8.group(1) + m8.group(2) + m8.group(3)
             rest = line[m8.end():].strip()
+            _trim_groups(_depth(rest))
             # Strip leading "---" or "-" markers
             rest = re.sub(r"^[-–—]+\s*", "", rest)
             # The line ends with unit + rate + optional preferential marker
@@ -258,6 +277,7 @@ def _parse_tariff_lines(lines: list[str]) -> tuple[list[dict], list[dict]]:
                 "description_statutory": desc,
                 "bcd_statutory": rate,
                 "unit_statutory": unit,
+                "group_context": " | ".join(groups[level] for level in sorted(groups)),
             }
             continue
 
@@ -265,8 +285,10 @@ def _parse_tariff_lines(lines: list[str]) -> tuple[list[dict], list[dict]]:
         if m6:
             _flush8()
             _flush_prefix()
+            _flush_group()
             prefix = m6.group(1) + m6.group(2)
             rest = line[m6.end():].strip()
+            _trim_groups(_depth(rest))
             rest = re.sub(r"^[-–—]+\s*", "", rest)
             # Drop trailing rate / unit if any (rare for 6-digit parents but possible)
             mr = list(_RATE_RE.finditer(rest))
@@ -279,6 +301,8 @@ def _parse_tariff_lines(lines: list[str]) -> tuple[list[dict], list[dict]]:
         if m4:
             _flush8()
             _flush_prefix()
+            _flush_group()
+            groups.clear()
             prefix = m4.group(1)
             rest = line[m4.end():].strip()
             rest = re.sub(r"^[-–—]+\s*", "", rest)
@@ -288,8 +312,19 @@ def _parse_tariff_lines(lines: list[str]) -> tuple[list[dict], list[dict]]:
             cur_prefix = {"prefix": prefix, "length": 4, "description_statutory": rest}
             continue
 
+        if re.match(r"^[-–—]+\s+\S", line):
+            _flush8()
+            _flush_prefix()
+            _flush_group()
+            depth = _depth(line)
+            _trim_groups(depth)
+            cur_group = {"depth": depth, "text": re.sub(r"^[-–—]+\s*", "", line)}
+            continue
+
         # Continuation line — appends to whichever record is current.
-        if cur8 is not None:
+        if cur_group is not None:
+            cur_group["text"] += " " + line
+        elif cur8 is not None:
             cur8["description_statutory"] += " " + line
         elif cur_prefix is not None:
             cur_prefix["description_statutory"] += " " + line
@@ -404,7 +439,7 @@ def parse_tariff_pdfs(tariff_dir: pathlib.Path, out_dir: pathlib.Path) -> dict:
     if not items_df.empty:
         items_df = items_df[[
             "cth", "description_statutory", "bcd_statutory", "unit_statutory",
-            "chapter_no", "section_no",
+            "chapter_no", "section_no", "group_context",
         ]]
         # Deduplicate (cth, chapter_no): keep first occurrence
         items_df = items_df.drop_duplicates(subset=["cth"], keep="first").reset_index(drop=True)

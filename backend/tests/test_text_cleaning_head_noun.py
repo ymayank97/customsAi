@@ -43,7 +43,7 @@ class HeadNounExtraction(unittest.TestCase):
     def test_no_modifier_returns_cleaned_only(self):
         head, mod = extract_head_noun("STEEL PLATE 6MM")
         self.assertEqual(mod, "")
-        self.assertEqual(head, "steel plate")
+        self.assertEqual(head, "steel plate 6mm")
 
 
 if __name__ == "__main__":

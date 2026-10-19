@@ -30,13 +30,13 @@ import { cn, formatINR, formatPercent, truncate } from "@/lib/utils";
 
 const TIER_DETAIL: Record<string, { label: string; help: string; cls: string }> = {
   stage3_adjudicated: {
-    label: "AI checked",
-    help: "The AI read the description, applied the tariff rules, and confirmed this code against the official tariff.",
+    label: "Rules considered",
+    help: "The suggestion was checked against tariff rules. An officer still needs to verify the product facts.",
     cls: "bg-success/10 text-success",
   },
   stage4_validated: {
-    label: "Corrected",
-    help: "The AI's first suggestion was corrected to match a real code and rate in the official tariff.",
+    label: "Tariff code checked",
+    help: "The suggested code exists in the tariff master. This is not an officer's confirmation.",
     cls: "bg-accent-soft text-accent",
   },
   stage1_fallback: {
@@ -70,7 +70,7 @@ export function ResultsTable({
   onEdit,
   busyRows,
 }: Props) {
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [sorting, setSorting] = useState<SortingState>([{ id: "risk", desc: true }]);
   const [selectedRowIdx, setSelectedRowIdx] = useState<number | null>(null);
 
   const filtered = useMemo(() => {
@@ -85,7 +85,7 @@ export function ResultsTable({
         " " +
         (r.final?.cth_final || "") +
         " " +
-        (r.final?.reasoning || "");
+        (r.final?.reasoning || "") + " " + (r.review?.corrected_cth || "");
       return hay.toLowerCase().includes(q);
     });
   }, [rows, filter, fraudOnly]);
@@ -101,7 +101,7 @@ export function ResultsTable({
             className="text-left max-w-[640px] w-full"
             title={row.original.item_description}
           >
-            <div className="text-[13px] leading-snug line-clamp-2 text-ink">
+            <div className="text-sm leading-snug line-clamp-2 text-ink">
               {row.original.item_description || "—"}
             </div>
             <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-ink-muted/80">
@@ -127,7 +127,7 @@ export function ResultsTable({
       },
       {
         id: "recommended",
-        header: "Recommended",
+        header: "Suggested code",
         cell: ({ row }) => {
           const r = row.original;
           const declaredBcd = r.declared_bcd;
@@ -161,21 +161,21 @@ export function ResultsTable({
       },
       {
         id: "flag",
-        header: "Flag",
+        header: "Duty check",
         accessorFn: (r) => (r.fraud?.is_fraud ? 2 : r.fraud?.flag_type ? 1 : 0),
         cell: ({ row }) => <FlagBadge flag={row.original.fraud} />,
         size: 160,
       },
       {
         id: "review",
-        header: "Review",
-        accessorFn: (r) => (r.review_flags?.length ? 1 : 0),
+        header: "Officer review",
+        accessorFn: (r) => r.review?.decision || "unreviewed",
         cell: ({ row }) => <ReviewBadge row={row.original} />,
         size: 120,
       },
       {
         id: "risk",
-        header: "Risk",
+        header: "Potential difference",
         accessorFn: (r) => r.fraud?.revenue_at_risk ?? 0,
         cell: ({ row }) => (
           <span
@@ -195,7 +195,6 @@ export function ResultsTable({
         id: "actions",
         header: "",
         cell: ({ row }) => {
-          const busy = busyRows.has(row.original.row_idx);
           return (
             <div className="flex items-center gap-1 justify-end">
               <button
@@ -205,27 +204,22 @@ export function ResultsTable({
               >
                 <Info className="h-3.5 w-3.5" />
               </button>
-              <button
-                onClick={() => onReevaluate(row.original)}
-                className="btn-ghost h-7 w-7 p-0"
-                title="Re-evaluate"
-                disabled={busy}
-              >
-                <RefreshCw className={cn("h-3.5 w-3.5", busy && "animate-spin")} />
-              </button>
               {onEdit && (
                 <button
                   onClick={() => onEdit(row.original)}
-                  className="btn-ghost h-7 w-7 p-0"
-                  title="Correct CTH (saves as labeled feedback)"
+                  className="btn-secondary whitespace-nowrap px-3 text-xs"
+                  title="Record a verified officer decision"
+                  aria-label={`Review item ${row.original.row_idx + 1}`}
                 >
                   <Pencil className="h-3.5 w-3.5" />
+                  {row.original.review ? "Edit review" : "Review item"}
                 </button>
               )}
               <button
                 onClick={() => onAskAi(row.original)}
                 className="btn-ghost h-7 w-7 p-0"
-                title="Ask AI about this row"
+                title="Explain this item"
+                aria-label={`Explain item ${row.original.row_idx + 1}`}
               >
                 <MessageSquare className="h-3.5 w-3.5" />
               </button>
@@ -392,21 +386,25 @@ function TierTag({ tier }: { tier?: RowResult["final"]["tier_used"] }) {
 }
 
 function ReviewBadge({ row }: { row: RowResult }) {
+  if (row.review) {
+    const waiting = row.review.decision === "needs_information";
+    return <div className="space-y-1">
+      <span className={cn("inline-flex rounded-full px-2 py-1 text-xs font-medium", waiting ? "bg-warn/10 text-warn" : "bg-success/10 text-success")}>
+        {waiting ? "Details needed" : row.review.decision === "confirmed" ? "Confirmed" : "Corrected"}
+      </span>
+      {!waiting && <div className="font-mono text-sm font-medium">{row.review.corrected_cth}</div>}
+    </div>;
+  }
   const flags = row.review_flags ?? [];
   if (!flags.length && !row.retrieval_diagnostics?.ambiguous) {
-    return <span className="text-[12px] text-ink-muted">—</span>;
+    return <span className="text-xs text-ink-muted">Awaiting review</span>;
   }
-  const labels = flags.length
-    ? flags
-    : row.retrieval_diagnostics?.ambiguous
-      ? ["ambiguous_retrieval"]
-      : [];
   return (
     <span
       className="inline-flex items-center rounded-full bg-warn/15 px-2 py-0.5 text-[10px] font-semibold text-warn ring-1 ring-warn/25"
-      title={labels.join(", ")}
+      title="The available description or tariff options need an officer's review."
     >
-      {labels.includes("ambiguous_retrieval") ? "Ambiguous retrieval" : labels.join(", ")}
+      Needs verification
     </span>
   );
 }
@@ -417,12 +415,12 @@ function FlagBadge({ flag }: { flag: RowResult["fraud"] }) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-danger/10 px-2 py-0.5 text-[11px] font-semibold text-danger">
         <ShieldAlert className="h-3 w-3" />
-        {flag.flag_type || "Fraud"}
+        {flag.flag_type || "Duty difference"}
       </span>
     );
   }
   if (!flag.flag_type) {
-    return <span className="text-[12px] text-ink-muted">Clear</span>;
+    return <span className="text-[12px] text-ink-muted">No difference found</span>;
   }
   return (
     <span className="inline-flex items-center rounded-full bg-page px-2 py-0.5 text-[11px] font-medium text-ink-muted ring-1 ring-line">
@@ -448,6 +446,7 @@ function RowDetailDrawer({
   onEdit?: (row: RowResult) => void;
   busy: boolean;
 }) {
+  if (!row) return null;
   return (
     <>
       <div
@@ -519,10 +518,17 @@ function DrawerBody({
       </header>
 
       <div className="flex-1 overflow-auto bg-page/40 px-5 py-4 space-y-4">
+        {row.review && <section className="rounded-2xl border border-success/20 bg-success/5 p-4">
+          <h4 className="text-sm font-semibold">Saved officer review</h4>
+          <div className="mt-2"><ReviewBadge row={row} /></div>
+          <p className="mt-3 text-sm leading-relaxed">{row.review.reasoning}</p>
+          {row.review.reference && <p className="mt-2 text-xs text-ink-soft">Reference: {row.review.reference}</p>}
+          <p className="mt-2 text-xs text-ink-muted">{row.review.reviewer_name} · {new Date(row.review.updated_at).toLocaleDateString()}</p>
+        </section>}
         {/* Verdict — declared → recommended */}
         <section className="rounded-2xl border border-line bg-surface p-4">
           <div className="text-[10px] uppercase tracking-wider text-ink-muted">
-            Verdict
+            Tariff comparison
           </div>
           <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
             <VerdictPanel
@@ -568,7 +574,7 @@ function DrawerBody({
 
           {row.fraud?.is_fraud && (
             <div className="mt-3 rounded-lg border border-danger/20 bg-danger/5 px-3 py-2 text-xs leading-relaxed text-danger">
-              <div className="font-semibold">Fraud — duty under-declared</div>
+              <div className="font-semibold">Potential duty under-declaration</div>
               <div className="mt-0.5">{row.fraud.detail}</div>
               {row.fraud.revenue_at_risk != null && (
                 <div className="mt-1 font-mono">
@@ -778,17 +784,17 @@ function DrawerBody({
           className="btn-secondary flex-1 text-sm"
         >
           <RefreshCw className={cn("h-3.5 w-3.5", busy && "animate-spin")} />
-          Re-evaluate
+          Check again
         </button>
         {onEdit && (
-          <button onClick={() => onEdit(row)} className="btn-secondary flex-1 text-sm">
+          <button onClick={() => { onClose(); onEdit(row); }} className="btn-secondary flex-1 text-sm">
             <Pencil className="h-3.5 w-3.5" />
-            Correct
+            {row.review ? "Edit review" : "Review item"}
           </button>
         )}
         <button onClick={() => onAskAi(row)} className="btn-primary flex-1 text-sm">
           <MessageSquare className="h-3.5 w-3.5" />
-          Ask AI
+          Explain item
         </button>
       </footer>
     </>
@@ -1073,7 +1079,7 @@ function VerificationSection({ final }: { final: RowResult["final"] }) {
       {conformal.length > 0 && (
         <div className="mt-2">
           <div className="text-[11px] text-ink-muted">
-            Other possible codes {conformal.length > 1 ? "· needs a closer look" : "· clear match"}
+            Possible codes {conformal.length > 1 ? "· needs a closer look" : "· one candidate retained"}
           </div>
           <div className="mt-1 flex flex-wrap gap-1">
             {conformal.map((c) => (

@@ -47,15 +47,15 @@ def _maybe_str(v) -> str:
 def _maybe_list(v) -> list[str]:
     if v is None:
         return []
+    if hasattr(v, "tolist"):
+        v = v.tolist()
+    if isinstance(v, (list, tuple)):
+        return [str(x).strip() for x in v if str(x).strip()]
     try:
         if pd.isna(v):
             return []
     except (TypeError, ValueError):
         pass
-    if isinstance(v, list):
-        return [str(x).strip() for x in v if str(x).strip()]
-    if isinstance(v, tuple):
-        return [str(x).strip() for x in v if str(x).strip()]
     if isinstance(v, str):
         return [x.strip() for x in v.split(",") if x.strip()]
     return []
@@ -152,7 +152,7 @@ def validate(proposed_cth: str, proposed_bcd: float | None,
              candidate_cths: list[str] | None = None) -> dict:
     """Stage-4 hard validation against the CUSTADA master.
 
-    HARD BLOCK: an invented CTH (one not present in ``cth_master``) is NEVER
+    HARD BLOCK: a CTH absent from the master or supplied eligible candidates is NEVER
     passed through as ``cth_final``. This structurally eliminates the
     "85442010"-class bug — a recommended code that does not exist in the
     tariff. Resolution order when the proposed CTH is invalid:
@@ -169,9 +169,10 @@ def validate(proposed_cth: str, proposed_bcd: float | None,
     """
     proposed_cth = (proposed_cth or "").strip()
     fallback_cth = (fallback_cth or "").strip() if fallback_cth else None
+    restricted = candidate_cths is not None
     candidate_cths = [str(c).strip() for c in (candidate_cths or []) if str(c).strip()]
 
-    if cth_exists(proposed_cth):
+    if cth_exists(proposed_cth) and (not restricted or proposed_cth in candidate_cths):
         master = get_master_row(proposed_cth)
         bcd_master = master.get("bcd_effective")
         if bcd_master is None:
@@ -191,19 +192,22 @@ def validate(proposed_cth: str, proposed_bcd: float | None,
     # --- Invalid / invented CTH: HARD BLOCK ---------------------------------
     # Find the best real substitute among supplied (master-built) codes.
     substitute = None
-    if fallback_cth and cth_exists(fallback_cth):
+    if fallback_cth and cth_exists(fallback_cth) and (not restricted or fallback_cth in candidate_cths):
         substitute = fallback_cth
     else:
         substitute = next((c for c in candidate_cths if cth_exists(c)), None)
 
     if substitute:
         master = get_master_row(substitute)
+        bcd = master.get("bcd_effective")
+        if bcd is None:
+            bcd = master.get("bcd_statutory")
         return {
             "cth_final": substitute,
-            "bcd_final": master.get("bcd_effective") or master.get("bcd_statutory"),
+            "bcd_final": bcd,
             "override_reason": (
-                f"Proposed CTH {proposed_cth!r} is not in the CUSTADA master "
-                f"(invalid/invented code, hard-blocked); replaced with best valid "
+                f"Proposed CTH {proposed_cth!r} is absent from the master or outside "
+                f"the legally eligible candidates (hard-blocked); replaced with best valid "
                 f"candidate {substitute}."
             ),
             "hallucination": True,
@@ -215,7 +219,8 @@ def validate(proposed_cth: str, proposed_bcd: float | None,
         "cth_final": "",
         "bcd_final": None,
         "override_reason": (
-            f"Proposed CTH {proposed_cth!r} is not in the CUSTADA master and no "
+            f"Proposed CTH {proposed_cth!r} is absent from the master or outside "
+            f"the legally eligible candidates and no "
             f"valid candidate was available; routed to manual verification queue."
         ),
         "hallucination": True,

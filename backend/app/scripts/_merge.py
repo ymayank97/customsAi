@@ -73,6 +73,7 @@ def _expand_prefix_inherit(tariff_items: pd.DataFrame, sub_index: pd.DataFrame,
                 "chapter_no": int(r["chapter_no"]) if pd.notna(r["chapter_no"]) else None,
                 "section_no": int(r["section_no"]) if pd.notna(r["section_no"]) else None,
                 "source_match": "exact",
+                "group_context": r.get("group_context", ""),
             })
             continue
         # Try 6-digit prefix
@@ -242,6 +243,11 @@ def build_master(out_dir: pathlib.Path) -> dict:
     # ``description_combined``.
     master["heading_text"] = master["cth"].astype(str).str[:4].map(heading_text_by_prefix).fillna("")
     master["subheading_text"] = master["cth"].astype(str).str[:6].map(subheading_text_by_prefix).fillna("")
+    master["group_context"] = master["group_context"].fillna("")
+    master["subheading_text"] = [
+        " | ".join(dict.fromkeys(p for p in (group, subheading) if p))
+        for group, subheading in zip(master["group_context"], master["subheading_text"])
+    ]
 
     # description_combined now chains the full lineage:
     #   chapter_title → heading_text → subheading_text → leaf → custada → jumbo

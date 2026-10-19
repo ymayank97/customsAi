@@ -146,6 +146,8 @@ export function ChatDrawer({
     }
   };
 
+  if (!open) return null;
+
   return (
     <>
       <div
