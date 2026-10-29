@@ -11,7 +11,7 @@ services:
       # JWT_SECRET + GOOGLE_OAUTH_CLIENT_ID in backend/.env enable Google OAuth.
       # DATABASE_URL targets Postgres (otherwise SQLite lives in ./var).
     volumes:
-      # Persist SQLite + FAISS cache across container restarts.
+      # Persist job results and mount local tariff/model artifacts.
       - ./var:/app/var
       - ./data:/app/data:ro
     # Bind to localhost only — production exposure is via nginx/Cloudflare proxying to 127.0.0.1:8000.
@@ -20,10 +20,10 @@ services:
       - "127.0.0.1:8000:8000"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health')"]
       interval: 30s
       timeout: 5s
-      start_period: 300s
+      start_period: 15s
       retries: 3
 
   frontend:

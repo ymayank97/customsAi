@@ -60,7 +60,6 @@ def main() -> int:
     tier_counts: dict[str, int] = {}
     for r in results:
         tier_counts[r["final"]["tier_used"]] = tier_counts.get(r["final"]["tier_used"], 0) + 1
-    halluc = sum(1 for r in results if r.get("hallucination"))
 
     print()
     print("=== Summary ===")
@@ -68,8 +67,7 @@ def main() -> int:
     print(f"Fraud flags        : {len(fraud_rows)}")
     print(f"Revenue at risk    : Rs {round(revenue):,}")
     print(f"Tier distribution  : {tier_counts}")
-    print(f"LLM hallucinations : {halluc} (caught by Tier 4)")
-    print(f"Wall time          : {elapsed:.1f}s ({len(results) / max(1, elapsed):.1f} rows/s)")
+    print(f"Wall time          : {elapsed:.1f}s ({len(results) / max(0.001, elapsed):.1f} rows/s)")
 
     print(f"\n[cli] writing annotated Excel -> {output}")
     excel_processor.write_annotated_excel(df, results, output)
@@ -81,7 +79,6 @@ def main() -> int:
                 "fraud_flags": len(fraud_rows),
                 "revenue_at_risk": round(revenue),
                 "tier_counts": tier_counts,
-                "hallucinations": halluc,
                 "wall_time_s": round(elapsed, 1),
             },
             "fraud_rows": [{

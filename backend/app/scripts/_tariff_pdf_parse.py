@@ -11,13 +11,6 @@ from typing import Iterable
 import pandas as pd
 import pdfplumber
 
-try:
-    import pytesseract  # noqa: F401
-    _PYTESS = True
-except Exception:  # pragma: no cover
-    _PYTESS = False
-
-
 _FNAME_RE = re.compile(r"^S(?P<sec>\d{1,2})\s*C(?P<ch>\d{1,2})\.pdf$", re.IGNORECASE)
 _CTH8_RE = re.compile(r"^(\d{4})\s+(\d{2})\s+(\d{2})\b")
 _CTH6_RE = re.compile(r"^(\d{4})\s+(\d{2})(?!\s*\d{2})\b")
@@ -313,7 +306,6 @@ def parse_tariff_pdfs(tariff_dir: pathlib.Path, out_dir: pathlib.Path) -> dict:
     prefix_rows: list[dict] = []
     per_chapter_status: list[dict] = []
     failures: list[str] = []
-    ocr_used = 0
 
     pdfs = sorted(tariff_dir.glob("*.pdf"))
     for pdf_path in pdfs:
@@ -345,26 +337,7 @@ def parse_tariff_pdfs(tariff_dir: pathlib.Path, out_dir: pathlib.Path) -> dict:
         non_ws = sum(1 for c in full if not c.isspace())
         parse_status = "ok"
         if non_ws < 500:
-            tess_cmd = getattr(pytesseract.pytesseract, "tesseract_cmd", "tesseract") if _PYTESS else None
-            ocr_ok = False
-            import shutil as _sh
-            if tess_cmd and _sh.which(tess_cmd):
-                try:
-                    from PIL import Image  # noqa: F401
-                    ocr_chunks = []
-                    with pdfplumber.open(pdf_path) as pdf:
-                        for page in pdf.pages:
-                            img = page.to_image(resolution=200).original
-                            ocr_chunks.append(pytesseract.image_to_string(img))
-                    full = "\n".join(ocr_chunks)
-                    pages_text = ocr_chunks
-                    parse_status = "ocr_used"
-                    ocr_ok = True
-                    ocr_used += 1
-                except Exception as exc:
-                    failures.append(f"{pdf_path.name}: OCR fallback failed: {exc!r}")
-            if not ocr_ok:
-                parse_status = "low_text_no_ocr"
+            parse_status = "insufficient_text"
 
         title = _find_chapter_title(pages_text, chapter_no) if full else ""
         chapter_notes, sub_notes = _extract_notes_blocks(full) if full else ("", "")
@@ -426,7 +399,6 @@ def parse_tariff_pdfs(tariff_dir: pathlib.Path, out_dir: pathlib.Path) -> dict:
         "chapters_parsed": int(len(chapters_df)),
         "total_items": int(len(items_df)),
         "total_prefix_entries": int(len(prefix_df)),
-        "ocr_fallbacks": int(ocr_used),
         "parse_failures": failures,
         "non_ok_chapters": [
             r for r in per_chapter_status if r["parse_status"] != "ok"
@@ -467,7 +439,6 @@ def main() -> int:
     print(f"  Chapters parsed       : {stats['chapters_parsed']}")
     print(f"  8-digit items         : {stats['total_items']}")
     print(f"  Prefix entries (4/6d) : {stats['total_prefix_entries']}")
-    print(f"  OCR fallbacks         : {stats['ocr_fallbacks']}")
     if stats["parse_failures"]:
         print(f"  Parse-time errors     :")
         for f in stats["parse_failures"]:

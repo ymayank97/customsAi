@@ -1,27 +1,9 @@
-"""Stages 7-9: build canonical cth_master + cth_descriptions + cth_rate_variants.
-
-Inputs (all from data/enriched):
-    _custada_rows.parquet
-    _tariff_items.parquet
-    _tariff_subheading_index.parquet
-    tariff_chapters.parquet
-    notifications.parquet
-    cth_to_notifications.parquet
-    jumbo_50_2017_schedule.parquet
-    jumbo_50_2017_conditions.parquet
-
-Outputs:
-    cth_master.parquet
-    cth_master.csv
-    cth_descriptions.parquet
-    cth_rate_variants.parquet
-"""
+"""Build the canonical tariff master from parsed tariff, CUSTADA and notification sources."""
 from __future__ import annotations
 
 import json
 import pathlib
 import re
-from typing import Iterable
 
 import pandas as pd
 
@@ -237,7 +219,7 @@ def build_master(out_dir: pathlib.Path) -> dict:
     master["sws_pct"] = master["sws"].apply(_parse_rate)
 
     # heading_text (4-digit) and subheading_text (6-digit) — explicit
-    # columns so downstream code (retriever, UI, LLM prompt) can read the
+    # columns so downstream code (classifier and UI) can read the
     # legal hierarchy text directly instead of brittle string-parsing of
     # ``description_combined``.
     master["heading_text"] = master["cth"].astype(str).str[:4].map(heading_text_by_prefix).fillna("")
@@ -265,7 +247,7 @@ def build_master(out_dir: pathlib.Path) -> dict:
     exact_xref = xref[xref["match_type"] == "exact_8d"].groupby("cth")["ntfn_id"].apply(set).to_dict()
 
     def _applied(row):
-        if row["bcd_statutory"] is None or row["bcd_effective"] is None:
+        if pd.isna(row["bcd_statutory"]) or pd.isna(row["bcd_effective"]):
             return []
         if abs(row["bcd_statutory"] - row["bcd_effective"]) < 0.001:
             return []
@@ -276,9 +258,6 @@ def build_master(out_dir: pathlib.Path) -> dict:
         return sorted(set(applied))
 
     master["bcd_notifications_applied"] = master.apply(_applied, axis=1)
-
-    # rate variant count placeholder; filled after build_rate_variants
-    master["rate_variant_count"] = 0
 
     # provenance JSON
     def _prov(row):
@@ -304,7 +283,7 @@ def build_master(out_dir: pathlib.Path) -> dict:
         "bcd_notifications_applied",
         "igst", "igst_pct", "sws", "sws_pct",
         "import_policy", "export_policy",
-        "notes_text", "applicable_notifications", "rate_variant_count",
+        "notes_text", "applicable_notifications",
         "section_no", "chapter_no", "source_match", "provenance",
     ]
     master_out = master[cols_out].copy()
@@ -317,172 +296,3 @@ def build_master(out_dir: pathlib.Path) -> dict:
         "with_applicable_ntfns": int(master_out["applicable_notifications"].apply(lambda x: len(x) > 0).sum()),
         "with_bcd_diff": int(master_out["bcd_notifications_applied"].apply(lambda x: len(x) > 0).sum()),
     }
-
-
-def build_descriptions(out_dir: pathlib.Path) -> dict:
-    master = pd.read_parquet(out_dir / "cth_master.parquet")
-    chapters = pd.read_parquet(out_dir / "tariff_chapters.parquet").set_index("chapter_no")
-    jumbo = pd.read_parquet(out_dir / "jumbo_50_2017_schedule.parquet")
-    subidx = pd.read_parquet(out_dir / "_tariff_subheading_index.parquet")
-
-    sub_lookup = subidx[subidx["length"] == 6].set_index("prefix")["description_statutory"].to_dict()
-    jumbo_by_cth: dict[str, str] = {}
-    for r in jumbo.itertuples(index=False):
-        if isinstance(r.cth, str) and r.cth and r.cth not in jumbo_by_cth and r.description:
-            jumbo_by_cth[r.cth] = r.description.strip()
-
-    rows: list[dict] = []
-    for r in master.itertuples(index=False):
-        cth = r.cth
-        # statutory_full
-        if r.description_statutory:
-            rows.append({"cth": cth, "variant_type": "statutory_full",
-                         "text": r.description_statutory, "source_doc": "tariff_pdf"})
-        # statutory_subheading
-        sh = sub_lookup.get(cth[:6])
-        if sh and sh != r.description_statutory:
-            rows.append({"cth": cth, "variant_type": "statutory_subheading",
-                         "text": sh, "source_doc": "tariff_pdf"})
-        # custada_short
-        if r.description:
-            rows.append({"cth": cth, "variant_type": "custada_short",
-                         "text": r.description, "source_doc": "custada_xls"})
-        # chapter_title
-        if r.chapter_title:
-            rows.append({"cth": cth, "variant_type": "chapter_title",
-                         "text": r.chapter_title, "source_doc": "tariff_pdf"})
-        # notes_excerpt
-        if r.notes_text:
-            rows.append({"cth": cth, "variant_type": "notes_excerpt",
-                         "text": str(r.notes_text)[:200], "source_doc": "custada_notes"})
-        # jumbo_description
-        jd = jumbo_by_cth.get(cth)
-        if jd:
-            rows.append({"cth": cth, "variant_type": "jumbo_description",
-                         "text": jd, "source_doc": "jumbo_50_2017"})
-
-    df = pd.DataFrame(rows, columns=["cth", "variant_type", "text", "source_doc"])
-    df["text"] = df["text"].astype(str).str.strip()
-    df = df[df["text"].str.len() > 0].reset_index(drop=True)
-    df["char_len"] = df["text"].str.len()
-    df["text_norm"] = df["text"].str.lower().str.replace(r"\s+", " ", regex=True).str.strip()
-    df = df.drop_duplicates(subset=["cth", "variant_type", "text_norm"]).reset_index(drop=True)
-    df.to_parquet(out_dir / "cth_descriptions.parquet", index=False)
-
-    by_var = df["variant_type"].value_counts().to_dict()
-    return {
-        "rows": int(len(df)),
-        "by_variant": {k: int(v) for k, v in by_var.items()},
-        "unique_cths": int(df["cth"].nunique()),
-    }
-
-
-def build_rate_variants(out_dir: pathlib.Path) -> dict:
-    master = pd.read_parquet(out_dir / "cth_master.parquet")
-    jumbo = pd.read_parquet(out_dir / "jumbo_50_2017_schedule.parquet")
-    conditions = pd.read_parquet(out_dir / "jumbo_50_2017_conditions.parquet")
-
-    cond_lookup = dict(zip(conditions["condition_no"].astype(str), conditions["condition_text"]))
-
-    rows: list[dict] = []
-
-    # Default statutory variant per CTH
-    for r in master.itertuples(index=False):
-        rows.append({
-            "cth": r.cth,
-            "bcd_rate": r.bcd_statutory if r.bcd_statutory is not None else None,
-            "bcd_rate_text": r.bcd_sch,
-            "condition_code": "STATUTORY",
-            "condition_text": "First Schedule statutory rate (no exemption applied)",
-            "notification_id": None,
-            "effective_from": None,
-            "effective_to": None,
-            "is_default": True,
-        })
-
-    # Build subheading->cths and heading->cths from master
-    cth_set: set[str] = set(master["cth"].astype(str).tolist())
-    subheading_to_cths: dict[str, list[str]] = {}
-    heading_to_cths: dict[str, list[str]] = {}
-    chapter_to_cths: dict[str, list[str]] = {}
-    for cth in cth_set:
-        subheading_to_cths.setdefault(cth[:6], []).append(cth)
-        heading_to_cths.setdefault(cth[:4], []).append(cth)
-        chapter_to_cths.setdefault(cth[:2], []).append(cth)
-
-    # Jumbo variants — explode each schedule row to applicable CTHs
-    for r in jumbo.itertuples(index=False):
-        rate_text = r.bcd_rate
-        rate_num = _parse_rate(rate_text)
-        cond_no_raw = r.condition_no
-        cond_no = ""
-        if isinstance(cond_no_raw, str):
-            cond_no = cond_no_raw.strip()
-        cond_txt = cond_lookup.get(cond_no, "") if cond_no else ""
-        cond_code = f"Jumbo-S.No.{r.s_no}" + (f"-Cond.{cond_no}" if cond_no else "")
-
-        cths_for_row: list[str] = []
-        if isinstance(r.cth, str) and r.cth and r.cth in cth_set:
-            cths_for_row.append(r.cth)
-        elif isinstance(r.prefix, str) and r.prefix:
-            p = r.prefix.replace(" ", "")
-            if len(p) == 6:
-                cths_for_row.extend(subheading_to_cths.get(p, ()))
-            elif len(p) == 4:
-                cths_for_row.extend(heading_to_cths.get(p, ()))
-            elif len(p) == 2:
-                cths_for_row.extend(chapter_to_cths.get(p, ()))
-
-        for cth in cths_for_row:
-            rows.append({
-                "cth": cth,
-                "bcd_rate": rate_num,
-                "bcd_rate_text": rate_text,
-                "condition_code": cond_code,
-                "condition_text": cond_txt or (r.description or "")[:200],
-                "notification_id": "Customs-050-2017",
-                "effective_from": "2017-06-30",
-                "effective_to": None,
-                "is_default": False,
-            })
-
-    df = pd.DataFrame(rows, columns=[
-        "cth", "bcd_rate", "bcd_rate_text", "condition_code", "condition_text",
-        "notification_id", "effective_from", "effective_to", "is_default",
-    ])
-    df.to_parquet(out_dir / "cth_rate_variants.parquet", index=False)
-
-    # Update rate_variant_count on master
-    counts = df.groupby("cth").size().to_dict()
-    master["rate_variant_count"] = master["cth"].map(counts).fillna(1).astype(int)
-    master.to_parquet(out_dir / "cth_master.parquet", index=False)
-    # Also dump CSV mirror now that master is final
-    master.to_csv(out_dir / "cth_master.csv", index=False)
-
-    return {
-        "rows": int(len(df)),
-        "default_rows": int((df["is_default"] == True).sum()),
-        "jumbo_rows": int((df["notification_id"] == "Customs-050-2017").sum()),
-        "cths_with_multiple_variants": int((master["rate_variant_count"] > 1).sum()),
-        "max_variants_for_one_cth": int(master["rate_variant_count"].max()),
-    }
-
-
-def main() -> int:
-    s7 = build_master(ENRICHED)
-    s8 = build_descriptions(ENRICHED)
-    s9 = build_rate_variants(ENRICHED)
-    print("=== Stage 7: cth_master ===")
-    print(json.dumps(s7, indent=2))
-    print("=== Stage 8: cth_descriptions ===")
-    print(json.dumps(s8, indent=2))
-    print("=== Stage 9: cth_rate_variants ===")
-    print(json.dumps(s9, indent=2))
-    (ENRICHED / "_merge_validation.json").write_text(
-        json.dumps({"stage7": s7, "stage8": s8, "stage9": s9}, indent=2)
-    )
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

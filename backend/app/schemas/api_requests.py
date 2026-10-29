@@ -1,8 +1,6 @@
 """Validated request bodies for public API routes."""
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import BaseModel, Field
 
 
@@ -11,15 +9,7 @@ class ReevaluateBody(BaseModel):
     declared_cth: str | None = None
     declared_bcd: float | None = None
     row_idx: int = 0
-    top_k: int | None = None
-    strict: bool | None = None
-
-
-class ChatBody(BaseModel):
-    message: str = Field(..., min_length=1, max_length=8000)
-    context: dict[str, Any] | None = None
-    top_k: int = Field(default=5, ge=1, le=20)
-    stream: bool = True
+    top_k: int | None = Field(default=None, ge=1, le=20)
 
 
 class FeedbackSubmitBody(BaseModel):

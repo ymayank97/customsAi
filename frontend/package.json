@@ -6,13 +6,12 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "lint": "next lint"
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@react-oauth/google": "^0.12.2",
-    "@tanstack/react-table": "^8.20.5",
     "clsx": "^2.1.1",
-    "framer-motion": "^11.11.17",
     "lucide-react": "^0.460.0",
     "next": "^14.2.32",
     "react": "^18.3.1",

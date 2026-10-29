@@ -1,0 +1,2 @@
+# Optional: SQLite needs no driver.
+psycopg2-binary>=2.9,<3

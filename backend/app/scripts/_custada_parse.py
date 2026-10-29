@@ -8,15 +8,11 @@ from __future__ import annotations
 import json
 import pathlib
 import re
-import tempfile
-import zipfile
 from typing import Any
 
 import pandas as pd
 import xlrd
 
-CACHE_ZIP = pathlib.Path("backend/RagModel/custada_cache.zip")
-VALIDATION_PATH = pathlib.Path("data/enriched/_custada_validation.json")
 
 # CUSTADA column positions (consistent across all 5 files for cols 0-5, 7-15)
 COL_HS = 0
@@ -125,33 +121,10 @@ def _parse_one_file(path: pathlib.Path) -> tuple[list[dict], list[tuple[str, str
     return records, orphans
 
 
-def _validate_against_cache(new_cths: set[str]) -> dict:
-    if not CACHE_ZIP.exists():
-        return {"cache_present": False}
-    with zipfile.ZipFile(CACHE_ZIP) as zf, tempfile.TemporaryDirectory() as td:
-        zf.extractall(td)
-        cache_pq = next(pathlib.Path(td).rglob("custada_master.parquet"))
-        cache_df = pd.read_parquet(cache_pq)
-    cache_cths = {str(x).zfill(8) for x in cache_df["hs_code"].astype(str)}
-    overlap = new_cths & cache_cths
-    missing = sorted(cache_cths - new_cths)
-    coverage = (len(overlap) / len(cache_cths)) if cache_cths else 0.0
-    return {
-        "cache_present": True,
-        "cache_count": len(cache_cths),
-        "new_count": len(new_cths),
-        "overlap": len(overlap),
-        "coverage": round(coverage, 6),
-        "missing_from_new": missing[:200],
-        "missing_total": len(missing),
-        "extras_vs_cache": len(new_cths - cache_cths),
-    }
-
-
 def parse_custada(input_dir: pathlib.Path, output_path: pathlib.Path) -> dict:
     """Parse all CUSTADA .xls files under ``input_dir`` and write _custada_rows.parquet.
 
-    Returns a stats dict with row counts, validation coverage, and warnings.
+    Returns a stats dict with row counts and warnings.
     """
     input_dir = pathlib.Path(input_dir)
     output_path = pathlib.Path(output_path)
@@ -202,12 +175,6 @@ def parse_custada(input_dir: pathlib.Path, output_path: pathlib.Path) -> dict:
 
     df.to_parquet(output_path, index=False)
 
-    new_cths = set(df["cth"])
-    validation = _validate_against_cache(new_cths)
-    VALIDATION_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with VALIDATION_PATH.open("w", encoding="utf-8") as f:
-        json.dump(validation, f, indent=2)
-
     stats = {
         "files_parsed": [str(f) for f in files],
         "per_file_tariff8_rows": per_file,
@@ -217,8 +184,6 @@ def parse_custada(input_dir: pathlib.Path, output_path: pathlib.Path) -> dict:
         "orphan_notes_count": len(all_orphans),
         "orphan_notes_sample": all_orphans[:5],
         "output_parquet": str(output_path.resolve()),
-        "validation_json": str(VALIDATION_PATH.resolve()),
-        "validation": validation,
     }
     return stats
 

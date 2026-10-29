@@ -1,0 +1,5 @@
+# Optional offline tariff build only; excluded from API image.
+pdfplumber>=0.11,<1
+xlrd>=2.0,<3
+beautifulsoup4>=4.12,<5
+lxml>=4.9,<7
