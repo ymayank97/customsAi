@@ -1,31 +1,15 @@
-"""FastAPI entry point for the CTH fraud detection service.
-
-Endpoints:
-    POST /api/uploads                  — upload Excel, kick off background processing
-    GET  /api/uploads                  — list jobs
-    GET  /api/uploads/{job_id}         — job status + progress
-    GET  /api/uploads/{job_id}/results — paginated row results
-    GET  /api/uploads/{job_id}/download — annotated Excel download
-    POST /api/classify/reevaluate      — re-evaluate a single row with stricter LLM params
-    POST /api/chat                     — RAG-grounded chat (SSE streaming)
-    GET  /api/cth/{cth}                — fetch master row by CTH
-"""
+"""Excel upload, local hierarchical classification, review feedback and audit results."""
 from __future__ import annotations
 
-import asyncio
-import json
 import pathlib
-import queue
 import re
-import threading
 import time
-import traceback
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -35,17 +19,15 @@ from backend.app.config import settings
 from backend.app.core.logger import configure as configure_logging, get as get_logger
 from backend.app.db import User, fail_stale_running_jobs, list_feedback, save_feedback
 from backend.app.deps import get_current_user
-from backend.app.jobs import (
+from backend.app.job_store import (
     create as create_job,
     get as get_job,
     list_all as list_jobs,
     update as update_job,
 )
-from backend.app.schemas.api_requests import ChatBody, FeedbackSubmitBody, ReevaluateBody
+from backend.app.schemas.api_requests import FeedbackSubmitBody, ReevaluateBody
 from backend.app.services import excel_processor, pipeline
-from backend.app.services.chat_service import stream_chat
-from backend.app.services.custada_validator import get_master_row
-from backend.app.services.retriever import preload_retrieval_stack
+from backend.app.services.classifier import get_master, get_master_row, get_model
 from backend.app.rate_limit import limiter, rate_key_user_or_ip
 
 configure_logging()
@@ -57,31 +39,10 @@ RESULTS_DIR = settings.project_root / "var" / "results"
 _MODELS_READY = False
 
 
-def _init_sentry() -> None:
-    dsn = settings.sentry_dsn.strip()
-    if not dsn:
-        return
-    try:
-        import sentry_sdk
-        from sentry_sdk.integrations.fastapi import FastApiIntegration
-        from sentry_sdk.integrations.starlette import StarletteIntegration
-    except ImportError:
-        log.warning("sentry-sdk not installed; SENTRY_DSN ignored")
-        return
-    sentry_sdk.init(
-        dsn=dsn,
-        integrations=[StarletteIntegration(), FastApiIntegration()],
-        traces_sample_rate=settings.sentry_traces_sample_rate,
-        environment=settings.app_env,
-    )
-    log.info("sentry initialized", extra={"environment": settings.app_env})
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _MODELS_READY
-
-    _init_sentry()
+    _MODELS_READY = False
 
     if settings.is_production:
         if not settings.google_oauth_client_id or not settings.jwt_secret or len(settings.jwt_secret) < 32:
@@ -101,9 +62,12 @@ async def lifespan(app: FastAPI):
     if n:
         log.info("marked stale running jobs failed", extra={"count": n})
 
-    log.info("warming retrieval / ML stack")
+    log.info("loading local tariff and classifier")
     try:
-        preload_retrieval_stack()
+        get_master()
+        get_model()
+        from backend.app.services.legal_rules import load_rules
+        load_rules()
     except Exception:
         log.exception("model warmup failed — /api/health will report not ready")
     else:
@@ -200,7 +164,6 @@ def _process_job(job_id: str) -> None:
         )
         log.info("job done", extra={"job_id": job_id, "count": len(rows)})
     except Exception as e:
-        traceback.print_exc()
         log.exception("job failed", extra={"job_id": job_id})
         update_job(
             job_id,
@@ -242,9 +205,9 @@ def health():
         "status": "ok" if _MODELS_READY else "starting",
         "models_ready": _MODELS_READY,
         "enriched_master": master.exists(),
-        "llm_provider": settings.llm_provider,
-        "has_anthropic_key": bool(settings.anthropic_api_key),
-        "has_google_key": bool(settings.google_api_key),
+        "classifier": "tfidf_logistic_hierarchy",
+        "model_trained": (settings.models_dir / "hierarchy.joblib").exists(),
+        "classification_available": _MODELS_READY and bool(get_master()) and (settings.models_dir / "hierarchy.joblib").exists(),
         "auth_enforced": settings.auth_enforced,
     }
     if not _MODELS_READY:
@@ -340,8 +303,8 @@ def job_status(job_id: str, current: User | None = Depends(get_current_user)):
 @app.get("/api/uploads/{job_id}/results")
 def job_results(
     job_id: str,
-    page: int = 1,
-    page_size: int = 50,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
     fraud_only: bool = False,
     current: User | None = Depends(get_current_user),
 ):
@@ -349,6 +312,13 @@ def job_results(
     if not j:
         raise HTTPException(404, "Unknown job")
     rows = j.results
+    summary = {
+        "total": len(rows),
+        "classified": sum(bool(r["final"]["cth_final"]) for r in rows),
+        "review": sum(not bool(r["final"]["cth_final"]) for r in rows),
+        "findings": sum(bool(r["fraud"]["is_fraud"]) for r in rows),
+        "revenue_at_risk": sum(r["fraud"]["revenue_at_risk"] or 0 for r in rows),
+    }
     if fraud_only:
         rows = [r for r in rows if r["fraud"]["is_fraud"]]
     total = len(rows)
@@ -361,6 +331,7 @@ def job_results(
         "rows_processed": j.rows_processed,
         "rows_total": j.rows_total,
         "rows": rows[start:start + page_size],
+        "summary": summary,
     }
 
 
@@ -398,56 +369,6 @@ def reevaluate(request: Request, body: ReevaluateBody, _: User | None = Depends(
     }
 
 
-def _poll_queue_item(q: queue.Queue):
-    try:
-        return q.get(timeout=0.5)
-    except queue.Empty:
-        return "__empty__"
-
-
-@app.post("/api/chat")
-@limiter.limit("30/minute", key_func=rate_key_user_or_ip)
-async def chat(request: Request, body: ChatBody, _: User | None = Depends(get_current_user)):
-    q: queue.Queue = queue.Queue()
-
-    def worker():
-        try:
-            for line in stream_chat(body.message.strip(), context=body.context, top_k=body.top_k):
-                q.put(line)
-        except Exception as e:
-            log.exception("chat worker failed")
-            err_line = f"event: error\ndata: {json.dumps({'message': str(e)})}\n\n"
-            q.put(err_line)
-        q.put(None)
-
-    threading.Thread(target=worker, daemon=True).start()
-
-    last_ping = time.monotonic()
-
-    async def event_gen():
-        nonlocal last_ping
-        while True:
-            if await request.is_disconnected():
-                log.info("chat client disconnected")
-                return
-            item = await asyncio.to_thread(_poll_queue_item, q)
-            if item == "__empty__":
-                if time.monotonic() - last_ping > 15.0:
-                    yield f"event: ping\ndata: {json.dumps({})}\n\n"
-                    last_ping = time.monotonic()
-                continue
-            if item is None:
-                break
-            yield item
-
-    headers = {
-        "Cache-Control": "no-cache, no-transform",
-        "X-Accel-Buffering": "no",
-        "Connection": "keep-alive",
-    }
-    return StreamingResponse(event_gen(), media_type="text/event-stream", headers=headers)
-
-
 @app.get("/api/cth/{cth}")
 def get_cth(cth: str, current: User | None = Depends(get_current_user)):
     if settings.auth_enforced and current is None:
@@ -460,6 +381,8 @@ def get_cth(cth: str, current: User | None = Depends(get_current_user)):
 
 @app.post("/api/feedback")
 def submit_feedback(body: FeedbackSubmitBody, current: User | None = Depends(get_current_user)):
+    if not get_master_row(body.corrected_cth):
+        raise HTTPException(422, "Corrected CTH must exist in the tariff master")
     payload = body.model_dump()
     label = (current.name or current.email) if (current is not None) else ""
     uid = current.id if current is not None else None

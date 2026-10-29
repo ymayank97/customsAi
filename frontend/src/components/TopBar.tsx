@@ -58,7 +58,7 @@ export function TopBar() {
     : healthStarting
     ? "Warming up"
     : health
-    ? "Online"
+    ? health.classification_available ? "Ready" : health.enriched_master ? "Training required" : "Tariff data required"
     : "";
 
   return (

@@ -60,40 +60,12 @@ def _abs_project_path(rel_or_abs: str) -> str:
     return str((settings.project_root / rel_or_abs).resolve())
 
 
-def _legacy_json_path(job_id: str) -> pathlib.Path:
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    return RESULTS_DIR / f"{job_id}_results.json"
-
-
 def _jsonl_path(job_id: str) -> pathlib.Path:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     return RESULTS_DIR / f"{job_id}_results.jsonl"
 
 
-def _migrate_legacy_json_to_jsonl(job_id: str) -> None:
-    jp = _legacy_json_path(job_id)
-    jl = _jsonl_path(job_id)
-    if not jp.exists() or jl.exists():
-        return
-    try:
-        data = json.loads(jp.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return
-    if not isinstance(data, list):
-        data = []
-    tmp = RESULTS_DIR / f".{job_id}.migrate.{uuid.uuid4().hex}.tmp"
-    with tmp.open("w", encoding="utf-8") as f:
-        for row in data:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
-    tmp.replace(jl)
-    try:
-        jp.unlink()
-    except OSError:
-        pass
-
-
 def _load_results_unlocked(job_id: str) -> list[dict]:
-    _migrate_legacy_json_to_jsonl(job_id)
     jl = _jsonl_path(job_id)
     if jl.exists():
         by_idx: dict[int, dict] = {}
@@ -109,20 +81,12 @@ def _load_results_unlocked(job_id: str) -> list[dict]:
             if isinstance(ri, int):
                 by_idx[ri] = r
         return [by_idx[k] for k in sorted(by_idx)]
-    jp = _legacy_json_path(job_id)
-    if jp.exists():
-        try:
-            data = json.loads(jp.read_text(encoding="utf-8"))
-            return data if isinstance(data, list) else []
-        except (json.JSONDecodeError, OSError):
-            return []
     return []
 
 
 def _append_results_jsonl(job_id: str, partial_list: list[dict]) -> None:
     """Append only rows whose row_idx is not yet present (stable checkpoints)."""
     jl = _jsonl_path(job_id)
-    _migrate_legacy_json_to_jsonl(job_id)
     seen: set[int] = set()
     if jl.exists():
         for line in jl.read_text(encoding="utf-8").splitlines():
@@ -143,7 +107,7 @@ def _append_results_jsonl(job_id: str, partial_list: list[dict]) -> None:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
-def _hydrate(row: AuditJob) -> Job:
+def _hydrate(row: AuditJob, include_results: bool = True) -> Job:
     return Job(
         id=row.id,
         filename=row.filename,
@@ -156,7 +120,7 @@ def _hydrate(row: AuditJob) -> Job:
         error=row.error or "",
         input_path=_abs_project_path(row.input_path or ""),
         output_path=_abs_project_path(row.output_path or ""),
-        results=_load_results_unlocked(row.id),
+        results=_load_results_unlocked(row.id) if include_results else [],
         columns_detected=dict(row.columns_detected or {}),
         eta_seconds=row.eta_seconds,
         user_id=row.user_id,
@@ -215,7 +179,7 @@ def list_all(user_id: int | None = None) -> list[Job]:
             for r in rows:
                 session.expunge(r)
                 frozen.append(r)
-    return [_hydrate(r) for r in frozen]
+    return [_hydrate(r, include_results=False) for r in frozen]
 
 
 def update(jid: str, **fields: Any) -> None:

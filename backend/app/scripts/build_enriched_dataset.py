@@ -8,16 +8,11 @@ Stages:
   5  Jumbo 50/2017      -> jumbo_50_2017_schedule.parquet, jumbo_50_2017_conditions.parquet
   6  Xref CTH<->ntfn    -> cth_to_notifications.parquet
   7  Canonical master   -> cth_master.parquet, cth_master.csv
-  8  Descriptions       -> cth_descriptions.parquet
-  9  Rate variants      -> cth_rate_variants.parquet
- 10  Chunks + TF-IDF    -> notification_chunks.parquet, tfidf.pkl
- 11  Report + README    -> build_report.json, README.md, excel/*.xlsx
- 12  Lexical index      -> lexical_index.pkl
 
 Usage (from project root, with venv Python active):
     python -m backend.app.scripts.build_enriched_dataset
     python -m backend.app.scripts.build_enriched_dataset --skip-existing
-    python -m backend.app.scripts.build_enriched_dataset --only 6,7,8,9,10,11
+    python -m backend.app.scripts.build_enriched_dataset --only 6,7
 """
 from __future__ import annotations
 
@@ -35,7 +30,6 @@ DATA_ROOT = pathlib.Path("data")
 def _stage_specs():
     from backend.app.scripts import (
         _custada_parse, _tariff_pdf_parse, _ntfn_parse, _xref, _merge,
-        _chunks_and_tfidf, _report_and_excel,
     )
 
     return [
@@ -74,36 +68,7 @@ def _stage_specs():
         (7, "Canonical master",
          [ENRICHED / "cth_master.parquet"],
          lambda: _merge.build_master(ENRICHED)),
-        (8, "Descriptions",
-         [ENRICHED / "cth_descriptions.parquet"],
-         lambda: _merge.build_descriptions(ENRICHED)),
-        (9, "Rate variants",
-         [ENRICHED / "cth_rate_variants.parquet"],
-         lambda: _merge.build_rate_variants(ENRICHED)),
-        (10, "Chunks + TF-IDF",
-         [ENRICHED / "notification_chunks.parquet", ENRICHED / "tfidf.pkl"],
-         lambda: {
-             "chunks": _chunks_and_tfidf.chunk_notifications(ENRICHED),
-             "tfidf": _chunks_and_tfidf.build_tfidf(ENRICHED),
-         }),
-        (11, "Report + README + Excel",
-         [ENRICHED / "build_report.json", ENRICHED / "README.md"],
-         lambda: {
-             "readme": _report_and_excel.write_readme(ENRICHED) or "ok",
-             "report": _report_and_excel.build_report(ENRICHED),
-             "excel": _report_and_excel.export_excel(ENRICHED),
-         }),
-        (12, "Lexical index",
-         [ENRICHED / "lexical_index.pkl"],
-         lambda: _build_lexical_index()),
     ]
-
-
-def _build_lexical_index() -> dict:
-    from backend.app.services import lexical_index
-
-    blob = lexical_index.build_and_save()
-    return {"rows": blob["n"]}
 
 
 def _outputs_exist(paths) -> bool:

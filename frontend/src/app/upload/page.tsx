@@ -20,10 +20,8 @@ type Phase = "idle" | "uploading" | "processing" | "done" | "error";
 // Plain-language label for whatever stage the backend reports.
 function phaseMessage(phase: string): string {
   switch (phase) {
-    case "retrieve":
+    case "classify":
       return "Finding matching tariff codes…";
-    case "tier3_llm":
-      return "Reviewing each line…";
     case "done":
       return "Almost done…";
     default:
@@ -111,8 +109,8 @@ function UploadInner() {
   }, [jobId, phase, router]);
 
   const handleFile = useCallback(async (f: File) => {
-    if (!/\.xlsx?$/i.test(f.name)) {
-      setError("Please choose an Excel file (.xlsx or .xls).");
+    if (!/\.xlsx$/i.test(f.name)) {
+      setError("Please choose an Excel file (.xlsx).");
       return;
     }
     const MAX_BYTES = 10 * 1024 * 1024;
@@ -201,7 +199,7 @@ function UploadInner() {
             <input
               ref={inputRef}
               type="file"
-              accept=".xlsx,.xls"
+              accept=".xlsx"
               onChange={onChange}
               className="hidden"
             />

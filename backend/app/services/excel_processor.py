@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import pathlib
+import math
 import re
 
 import pandas as pd
@@ -18,7 +19,7 @@ ASSESS_KEYS = ["assess val", "assessable value", "assess value", "value"]
 IMPORTER_KEYS = ["importer", "iec name", "consignee"]
 BE_NO_KEYS = ["be no", "bill of entry"]
 
-_RATE_RE = re.compile(r"(\d+(?:\.\d+)?)")
+_RATE_RE = re.compile(r"(-?\d+(?:,\d{3})*(?:\.\d+)?)")
 
 MAX_ROWS = 50_000
 MAX_SHEETS = 5
@@ -27,7 +28,7 @@ EXCEL_CELL_MAX = 32_000
 
 
 def _find_col(df: pd.DataFrame, keys: list[str]) -> str | None:
-    cols_lower = {c.lower(): c for c in df.columns}
+    cols_lower = {str(c).strip().lower(): c for c in df.columns}
     for k in keys:
         for low, real in cols_lower.items():
             if k in low:
@@ -38,10 +39,11 @@ def _find_col(df: pd.DataFrame, keys: list[str]) -> str | None:
 def _parse_num(v) -> float | None:
     if v is None or pd.isna(v):
         return None
-    if isinstance(v, (int, float)):
-        return float(v)
-    m = _RATE_RE.search(str(v))
-    return float(m.group(1)) if m else None
+    match = _RATE_RE.search(str(v))
+    if not match:
+        return None
+    value = float(match.group(1).replace(",", ""))
+    return value if math.isfinite(value) and value >= 0 else None
 
 
 def load_be_excel(path: pathlib.Path) -> tuple[pd.DataFrame, dict]:
@@ -49,8 +51,9 @@ def load_be_excel(path: pathlib.Path) -> tuple[pd.DataFrame, dict]:
     suffix = path.suffix.lower()
     if suffix != ".xlsx":
         raise ValueError("Only .xlsx workbooks are supported (not .xls / .xlsm).")
-    head = path.read_bytes()[:4]
-    if len(head) < 4 or not head.startswith(b"PK"):
+    with path.open("rb") as stream:
+        head = stream.read(4)
+    if head != XLSX_MAGIC_PREFIX:
         raise ValueError("Not a valid .xlsx (ZIP) file.")
 
     wb = load_workbook(path, read_only=True, data_only=True)
@@ -66,11 +69,13 @@ def load_be_excel(path: pathlib.Path) -> tuple[pd.DataFrame, dict]:
         data: list[tuple] = []
         for i, row in enumerate(rows_iter):
             if i >= MAX_ROWS:
-                break
+                raise ValueError(f"Too many rows (max {MAX_ROWS}).")
             data.append(row)
     finally:
         wb.close()
 
+    if not all(headers) or len(set(headers)) != len(headers):
+        raise ValueError("Every column needs a unique, nonempty header")
     df = pd.DataFrame(data, columns=headers)
     cols = {
         "description": _find_col(df, DESC_KEYS),
@@ -89,17 +94,13 @@ def load_be_excel(path: pathlib.Path) -> tuple[pd.DataFrame, dict]:
 
 
 def _to_cth_str(v) -> str:
+    """Remove spreadsheet formatting without turning six digits into eight."""
     if v is None or pd.isna(v):
         return ""
-    s = str(v).strip()
-    digits = re.sub(r"\D", "", s)
-    if not digits:
-        return ""
-    if len(digits) >= 8:
-        return digits[:8]
-    if 6 <= len(digits) < 8:
-        return digits.zfill(8)
-    return digits
+    value = str(v).strip()
+    value = re.sub(r"\.0+$", "", value)
+    compact = re.sub(r"[ .-]", "", value)
+    return compact if compact.isdigit() else value
 
 
 def _trim_cell(val, max_len: int = EXCEL_CELL_MAX) -> str:
@@ -111,6 +112,7 @@ def _trim_cell(val, max_len: int = EXCEL_CELL_MAX) -> str:
 
 def normalise_input_rows(df: pd.DataFrame, cols: dict) -> list[dict]:
     rows: list[dict] = []
+    df = df.fillna("")
     for i, r in df.iterrows():
         rows.append({
             "row_idx": int(i),
@@ -130,10 +132,7 @@ def normalise_input_rows(df: pd.DataFrame, cols: dict) -> list[dict]:
 HEADER_FILL = PatternFill("solid", fgColor="1F3864")
 HEADER_FONT = Font(color="FFFFFF", bold=True)
 FRAUD_UNDER_FILL = PatternFill("solid", fgColor="FFD7D7")
-CTH_MISMATCH_FILL = PatternFill("solid", fgColor="FFF2CC")
 BORDER_RED = Border(left=Side(style="thick", color="C00000"))
-BORDER_ORANGE = Border(left=Side(style="thick", color="ED7D31"))
-THIN = Side(style="thin", color="CCCCCC")
 
 
 def write_annotated_excel(
@@ -145,7 +144,7 @@ def write_annotated_excel(
     formatted for auditors (frozen header, autofilter, fraud row highlighting)."""
     by_idx = {r["row_idx"]: r for r in results}
     extras: dict[str, list] = {
-        "Correct CTH": [], "Correct BCD %": [], "Tier Used": [], "Confidence": [],
+        "Suggested CTH": [], "Reference BCD %": [], "Method": [], "Model score": [],
         "Fraud Flag": [], "Fraud Type": [], "Revenue at Risk": [],
         "Reasoning": [], "Disagreement": [], "Applicable Notifications": [],
         "Review flags": [], "BCD basis": [],
@@ -157,10 +156,10 @@ def write_annotated_excel(
             for k in extras:
                 extras[k].append("")
             continue
-        extras["Correct CTH"].append(r["final"]["cth_final"])
-        extras["Correct BCD %"].append(r["final"]["bcd_final"] if r["final"]["bcd_final"] is not None else "")
-        extras["Tier Used"].append(r["final"]["tier_used"])
-        extras["Confidence"].append(round(r["final"]["confidence"], 3))
+        extras["Suggested CTH"].append(r["final"]["cth_final"])
+        extras["Reference BCD %"].append(r["final"]["bcd_final"] if r["final"]["bcd_final"] is not None else "")
+        extras["Method"].append(r["final"]["tier_used"])
+        extras["Model score"].append(round(r["final"]["confidence"], 3))
         extras["Fraud Flag"].append("YES" if r["fraud"]["is_fraud"] else "")
         extras["Fraud Type"].append(r["fraud"]["flag_type"])
         extras["Revenue at Risk"].append(
@@ -220,14 +219,6 @@ def _format_audit_comment(row: dict) -> str:
     rev = row.get("review_flags") or []
     if rev:
         bits.append(f"- review_flags: {', '.join(rev)}")
-    rd = row.get("retrieval_diagnostics") or {}
-    if rd.get("ambiguous"):
-        m = rd.get("margin")
-        bits.append(
-            f"- retrieval: ambiguous (top1-top2 margin {m})"
-            if m is not None
-            else "- retrieval: ambiguous (low top1-top2 margin)"
-        )
     for stage in audit.get("stages", []) or []:
         explanation = stage.get("explanation")
         if explanation:

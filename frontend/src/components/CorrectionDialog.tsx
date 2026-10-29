@@ -81,8 +81,7 @@ export function CorrectionDialog({ row, jobId, onClose, onSaved }: Props) {
           <div>
             <h3 className="text-base font-semibold">Correct row {row.row_idx + 1}</h3>
             <p className="mt-0.5 text-xs text-ink-muted">
-              Your correction is stored as labeled feedback for retraining the
-              chapter classifier and tariff index.
+              Your correction is saved for review and inclusion in the next training dataset.
             </p>
           </div>
           <button onClick={onClose} className="btn-ghost h-8 w-8 p-0">
@@ -101,7 +100,7 @@ export function CorrectionDialog({ row, jobId, onClose, onSaved }: Props) {
               <span className="font-mono">{row.declared_cth || "—"}</span>
             </div>
             <div>
-              <span className="text-ink-muted">AI predicted:</span>{" "}
+              <span className="text-ink-muted">Model suggestion:</span>{" "}
               <span className="font-mono">{row.final?.cth_final || "—"}</span>
             </div>
           </div>

@@ -16,11 +16,6 @@ export function formatPercent(value: number | null | undefined, digits = 0): str
   return `${value.toFixed(digits)}%`;
 }
 
-export function truncate(value: string | null | undefined, n = 80): string {
-  if (!value) return "";
-  return value.length > n ? value.slice(0, n).trimEnd() + "…" : value;
-}
-
 export function timeAgo(unixSeconds: number | null | undefined): string {
   if (!unixSeconds) return "—";
   const seconds = Math.max(0, Math.floor(Date.now() / 1000 - unixSeconds));

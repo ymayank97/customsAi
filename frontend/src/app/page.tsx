@@ -57,7 +57,7 @@ function Home() {
           </Link>
         </div>
         <p className="mt-4 text-[13px] text-ink-muted">
-          Works with .xlsx and .xls files up to 10&nbsp;MB.
+          Works with .xlsx files up to 10&nbsp;MB.
         </p>
       </section>
 
