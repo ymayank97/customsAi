@@ -8,11 +8,16 @@ from backend.app.config import settings
 from backend.app.ml.hierarchy import HierarchicalClassifier
 
 
-@lru_cache(maxsize=1)
 def get_master():
     path = settings.data_dir / "cth_master.parquet"
     if not path.exists():
         return {}
+    stat = path.stat()
+    return _read_master(path, stat.st_mtime_ns, stat.st_size)
+
+
+@lru_cache(maxsize=1)
+def _read_master(path, modified_ns, size):
     from pyarrow.parquet import read_schema
     needed = {"cth", "description", "heading_text", "subheading_text", "chapter_title",
               "bcd_statutory", "bcd_effective", "bcd_ntfn", "bcd_notifications_applied",
@@ -29,11 +34,17 @@ def get_master_row(cth):
     return get_master().get(str(cth or ""))
 
 
-@lru_cache(maxsize=1)
 def get_model():
     path = settings.models_dir / "hierarchy.joblib"
     if not path.exists():
         return None
+    stat = path.stat()
+    master = settings.data_dir / "cth_master.parquet"
+    return _load_model(path, stat.st_mtime_ns, stat.st_size, master.stat().st_mtime_ns)
+
+
+@lru_cache(maxsize=1)
+def _load_model(path, modified_ns, size, master_modified_ns):
     model = HierarchicalClassifier.load(path)
     digest = hashlib.sha256("\n".join(sorted(get_master())).encode()).hexdigest()
     master_hash = hashlib.sha256((settings.data_dir / "cth_master.parquet").read_bytes()).hexdigest()
@@ -46,4 +57,5 @@ def predict(descriptions):
     model = get_model()
     if model is None:
         return [HierarchicalClassifier._empty("model_not_trained") for _ in descriptions]
-    return model.predict(descriptions)
+    source = model.metadata.get("training_source", "verified_invoices")
+    return [{**prediction, "training_source": source} for prediction in model.predict(descriptions)]

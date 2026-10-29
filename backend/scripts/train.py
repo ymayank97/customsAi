@@ -5,6 +5,9 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
+import time
+import warnings
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -101,7 +104,7 @@ def train(examples: Path, master: Path, output: Path, tariff_version: str,
     training, validation, test = split_examples(frame)
     model = HierarchicalClassifier().fit(training.description, training.cth, codes)
     model.threshold = select_threshold(model.predict(validation.description), validation.cth, target, min_accepted)
-    model.metadata.update(tariff_version=tariff_version, taxonomy_hash=taxonomy_hash(codes),
+    model.metadata.update(training_source="verified_invoices", tariff_version=tariff_version, taxonomy_hash=taxonomy_hash(codes),
                           master_sha256=hashlib.sha256(master.read_bytes()).hexdigest(),
                           trained_at=datetime.now(timezone.utc).isoformat(),
                           examples_sha256=hashlib.sha256(examples.read_bytes()).hexdigest(),
@@ -122,15 +125,76 @@ def train(examples: Path, master: Path, output: Path, tariff_version: str,
     return report
 
 
+def bootstrap(master: Path, output: Path, tariff_version: str):
+    """Train catalogue suggestions without pretending the catalogue is gold invoices.
+
+    Distinct source-text views per tariff item. No generated invoice
+    paraphrases, no declared labels, no duplicated examples to inflate support,
+    and no training-set score presented as real-world classification accuracy.
+    """
+    started = time.perf_counter()
+    frame = pd.read_parquet(master)
+    text_columns = [name for name in ("description", "subheading_text", "heading_text", "chapter_title") if name in frame]
+    frame = frame[["cth", *text_columns]].fillna("")
+    codes = frame.cth.astype(str).tolist()
+    documents, labels = [], []
+    for row in frame.to_dict("records"):
+        parts = [str(row.get(column, "")).strip() for column in
+                 ("description", "subheading_text", "heading_text", "chapter_title")]
+        views = [parts[0], " | ".join(dict.fromkeys(part for part in parts[:3] if part))]
+        for view in dict.fromkeys(views):
+            if clean_description(view):
+                documents.append(view)
+                labels.append(str(row["cth"]))
+    if any(not clean_description(doc) for doc in documents):
+        raise ValueError("Every catalogue code needs a nonempty description")
+    print(f"Training {len(codes):,} tariff codes using {len(documents):,} distinct source views; invoice accuracy is unmeasured.", flush=True)
+    model = HierarchicalClassifier(class_weight="balanced")
+    with warnings.catch_warnings():
+        # Catalogue labels are intentionally one per item, not continuous values.
+        warnings.filterwarnings("ignore", message="The number of unique classes is greater than 50%", category=UserWarning)
+        model.fit(documents, labels, codes,
+                  progress=lambda done, total: print(f"Branches {done}/{total}", flush=True))
+    # Two views of a catalogue row do not constitute two independent examples.
+    model.counts = Counter({code: 1 for code in codes})
+    model.metadata.update(
+        training_source="tariff_descriptions", tariff_version=tariff_version,
+        taxonomy_hash=taxonomy_hash(codes),
+        master_sha256=hashlib.sha256(master.read_bytes()).hexdigest(),
+        trained_at=datetime.now(timezone.utc).isoformat(),
+        threshold=model.threshold,
+        invoice_accuracy=None,
+        independent_catalogue_rows=len(codes),
+    )
+    report = {"metadata": model.metadata, "catalogue_codes": len(codes),
+              "trained_branches": len(model.models),
+              "fit_seconds": round(time.perf_counter() - started, 2),
+              "invoice_test_accuracy": None,
+              "automatic_acceptance_enabled": False,
+              "evaluation_note": "Catalogue-trained suggestions only. No verified invoice test set is available; accuracy and acceptance thresholds are not established."}
+    model.save(output)
+    report["model_bytes"] = output.stat().st_size
+    output.with_suffix(".report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return report
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("examples", type=Path, help="Reviewed CSV: description,cth,verified[,group_id]")
+    parser.add_argument("examples", nargs="?", type=Path, help="Reviewed CSV: description,cth,verified[,group_id]")
+    parser.add_argument("--tariff-only", action="store_true", help="Train suggestions from catalogue descriptions; no claim of invoice accuracy")
     parser.add_argument("--master", type=Path, default=settings.data_dir / "cth_master.parquet")
     parser.add_argument("--output", type=Path, default=settings.models_dir / "hierarchy.joblib")
     parser.add_argument("--tariff-version", required=True)
     parser.add_argument("--target-accuracy", type=float, default=0.95)
     parser.add_argument("--min-validation-accepted", type=int, default=20)
     args = parser.parse_args()
+    if args.tariff_only:
+        if args.examples:
+            parser.error("Choose tariff-only training or a verified CSV, not both")
+        print(json.dumps(bootstrap(args.master, args.output, args.tariff_version), indent=2))
+        return
+    if args.examples is None:
+        parser.error("Supply a reviewed CSV, or explicitly select --tariff-only")
     if not 0.5 <= args.target_accuracy <= 1 or args.min_validation_accepted < 1:
         parser.error("Target accuracy must be 0.5..1 and minimum accepted must be positive")
     print(json.dumps(train(args.examples, args.master, args.output, args.tariff_version,

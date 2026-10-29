@@ -191,6 +191,9 @@ def build_master(out_dir: pathlib.Path) -> dict:
         desc = (r.description_statutory or "").strip()
         if not prefix or not desc:
             continue
+        # PDF cross-references can resemble headings from another chapter.
+        if int(prefix[:2]) != int(r.chapter_no):
+            continue
         if r.length == 4:
             heading_text_by_prefix.setdefault(prefix, desc)
         elif r.length == 6:
@@ -224,6 +227,13 @@ def build_master(out_dir: pathlib.Path) -> dict:
     # ``description_combined``.
     master["heading_text"] = master["cth"].astype(str).str[:4].map(heading_text_by_prefix).fillna("")
     master["subheading_text"] = master["cth"].astype(str).str[:6].map(subheading_text_by_prefix).fillna("")
+    # Structured XLS rows preserve dash-level ancestors more reliably than PDF
+    # line wrapping, including categories whose eight-digit leaf just says Other.
+    for target, source in (("heading_text", "heading_text_custada"),
+                           ("subheading_text", "subheading_text_custada")):
+        if source in master:
+            usable = master[source].fillna("").str.strip()
+            master[target] = usable.where(usable.ne(""), master[target])
 
     # description_combined now chains the full lineage:
     #   chapter_title → heading_text → subheading_text → leaf → custada → jumbo

@@ -5,7 +5,7 @@ import pytest
 
 from backend.app.core.text_cleaning import clean_description
 from backend.app.ml.hierarchy import HierarchicalClassifier
-from backend.scripts.train import load_examples, select_threshold, split_examples, train
+from backend.scripts.train import bootstrap, load_examples, select_threshold, split_examples, train
 
 
 @pytest.fixture
@@ -116,3 +116,44 @@ def test_training_command_builds_independent_report(tmp_path):
     assert set(report["test"]["accuracy_by_digits"]) == {"2", "4", "6", "8"}
     assert output.exists() and output.with_suffix(".report.json").exists()
     assert report["metadata"]["tariff_version"] == "test-version"
+
+
+def test_catalogue_training_does_not_claim_verified_accuracy(tmp_path):
+    master, output = tmp_path / "master.parquet", tmp_path / "model.joblib"
+    pd.DataFrame([
+        {"cth": "73181500", "description": "threaded steel bolts", "heading_text": "steel fasteners"},
+        {"cth": "52081100", "description": "woven cotton fabric", "heading_text": "cotton textiles"},
+    ]).to_parquet(master)
+    report = bootstrap(master, output, "test-tariff")
+    model = HierarchicalClassifier.load(output)
+    model.threshold = 0
+    assert model.metadata["training_source"] == "tariff_descriptions"
+    assert report["invoice_test_accuracy"] is None
+    assert set(model.counts.values()) == {1}
+    prediction = model.predict(["threaded steel bolts"])[0]
+    assert prediction["candidates"]
+    assert not prediction["cth"]
+
+
+def test_custada_hierarchy_keeps_only_ancestors(monkeypatch):
+    pytest.importorskip("xlrd")
+    from types import SimpleNamespace
+    from backend.app.scripts import _custada_parse
+    source = [
+        ("HS Code", "", "Description"),
+        ("8536", "", "Electrical connection apparatus"),
+        ("", "-", "Plugs and sockets"),
+        ("853669", "--", "Other plugs"),
+        ("85366910", "---", "Of plastic"),
+        ("85366990", "---", "Other materials"),
+        ("85369090", "-", "Other apparatus"),
+    ]
+    def cell_value(row, column):
+        return "Tariff" if column == 15 else source[row][column] if column < 3 else ""
+    sheet = SimpleNamespace(nrows=len(source), ncols=16, cell_value=cell_value)
+    monkeypatch.setattr(_custada_parse.xlrd, "open_workbook", lambda path: SimpleNamespace(sheet_by_index=lambda index: sheet))
+    rows, _ = _custada_parse._parse_one_file(Path("test.xls"))
+    assert rows[0]["heading_text_custada"] == "Electrical connection apparatus"
+    assert rows[1]["subheading_text_custada"] == "Plugs and sockets | Other plugs"
+    assert "plastic" not in rows[1]["subheading_text_custada"]
+    assert rows[2]["subheading_text_custada"] == ""

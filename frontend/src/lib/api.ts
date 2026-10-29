@@ -62,6 +62,7 @@ export interface RowResult {
     cth_final: string; bcd_final: number | null; confidence: number; reasoning: string;
     tier_used: "hierarchical_model" | "manual_queue"; candidates: Candidate[];
     supported_prefix: string; manual_queue: boolean;
+    suggested_cth?: string; training_source?: string;
   };
   fraud: { is_fraud: boolean; flag_type: string; revenue_at_risk: number | null; detail: string };
   review_flags: string[];
@@ -69,11 +70,12 @@ export interface RowResult {
 }
 export interface ResultsPage {
   total: number; page: number; page_size: number; rows: RowResult[];
-  summary: { total: number; classified: number; review: number; findings: number; revenue_at_risk: number };
+  summary: { total: number; classified: number; suggested: number; review: number; findings: number; revenue_at_risk: number };
 }
 export interface HealthResponse {
   status: string; enriched_master: boolean; model_trained: boolean;
   classification_available: boolean; auth_enforced: boolean;
+  training_source?: string | null;
 }
 export interface FeedbackPayload {
   job_id?: string; row_idx: number; item_description: string; declared_cth?: string;
@@ -82,6 +84,8 @@ export interface FeedbackPayload {
 }
 
 export const api = {
+  reclassify: (id: string): Promise<{ job_id: string; status: JobStatus }> =>
+    apiFetch(`/api/uploads/${id}/reclassify`, { method: "POST" }).then(r => asJson(r)),
   health: (): Promise<HealthResponse> =>
     apiFetch("/api/health").then((r) => asJson<HealthResponse>(r)),
 

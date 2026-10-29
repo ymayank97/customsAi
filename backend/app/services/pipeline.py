@@ -19,10 +19,12 @@ def _result(row, prediction):
     # A missing/changed master can never produce a final invalid code.
     if code and not master:
         code = ""
-    conflicts = legal_rules.conflicts(row.get("item_description", ""), code)
+    suggested = candidates[0]["cth"] if candidates else code
+    conflicts = legal_rules.conflicts(row.get("item_description", ""), code or suggested)
     if conflicts:
         code = ""
         master = {}
+        suggested = ""
     manual = not code
     rate = rate_resolver.resolve_rate(master if code else {}, row.get("ntfn_ref", ""))
     flags = []
@@ -30,12 +32,16 @@ def _result(row, prediction):
         flags.extend(["manual_review", "legal_rule_conflict" if conflicts else prediction["reason"]])
     if code and rate["bcd_audit"] is None:
         flags.append("rate_requires_review")
+    source = prediction.get("training_source", "verified_invoices")
     reason = ("TF-IDF + logistic regression selected a valid tariff path. "
               "Score is uncalibrated; this is a statistical suggestion, not a legal determination."
               if code else "No automatic eight-digit classification: " + ("reviewed exclusion rule conflict" if conflicts else prediction["reason"].replace("_", " ")))
+    if source == "tariff_descriptions" and suggested:
+        reason = "Tariff-trained model suggestion; invoice accuracy has not been validated. Verify the product attributes and leaf text before accepting this code."
     prefix = "" if conflicts else prediction["supported_prefix"]
     final = {
         "cth_final": code, "bcd_final": rate["bcd_audit"],
+        "suggested_cth": suggested, "training_source": source,
         "tier_used": "manual_queue" if manual else "hierarchical_model",
         "confidence": prediction["score"], "reasoning": reason,
         "candidates": candidates, "disagreement": "", "manual_queue": manual,

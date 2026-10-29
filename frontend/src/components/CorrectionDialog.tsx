@@ -23,7 +23,7 @@ export function CorrectionDialog({ row, jobId, onClose, onSaved }: Props) {
 
   useEffect(() => {
     if (row) {
-      setCorrectedCth(row.final?.cth_final || row.declared_cth || "");
+      setCorrectedCth(row.final?.cth_final || row.final?.suggested_cth || row.declared_cth || "");
       setCorrectedBcd(
         row.final?.bcd_final != null ? String(row.final.bcd_final) : ""
       );
@@ -49,7 +49,7 @@ export function CorrectionDialog({ row, jobId, onClose, onSaved }: Props) {
         row_idx: row.row_idx,
         item_description: row.item_description,
         declared_cth: row.declared_cth,
-        predicted_cth: row.final?.cth_final,
+        predicted_cth: row.final?.cth_final || row.final?.suggested_cth,
         predicted_bcd: row.final?.bcd_final,
         corrected_cth: correctedCth.trim(),
         corrected_bcd: Number.isFinite(bcdNum as number) ? (bcdNum as number) : null,

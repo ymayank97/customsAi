@@ -28,3 +28,5 @@ frontend/.next
 .claude
 data
 backend/tests
+
+frontend/.next-dev/

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import joblib
 import numpy as np
+from threadpoolctl import threadpool_limits
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import FeatureUnion
@@ -32,10 +33,11 @@ class HierarchicalClassifier:
     min_leaf_samples: int = 3
     beam_width: int = 3
     threshold: float = 1.01  # No automatic decisions until validated.
+    class_weight: str | None = None
     models: dict = field(default_factory=dict)
     metadata: dict = field(default_factory=dict)
 
-    def fit(self, descriptions, labels, valid_codes):
+    def fit(self, descriptions, labels, valid_codes, progress=None):
         descriptions, labels = list(descriptions), np.asarray(labels, dtype=str)
         valid_codes = set(valid_codes)
         if len(descriptions) != len(labels) or not len(labels):
@@ -57,7 +59,9 @@ class HierarchicalClassifier:
         for index, label in enumerate(labels):
             for width in LEVELS:
                 indices_by_parent[label[:width - 2]].append(index)
-        for parent, positions in indices_by_parent.items():
+        for number, (parent, positions) in enumerate(indices_by_parent.items()):
+            if progress and number % 100 == 0:
+                progress(number, len(indices_by_parent))
             width = len(parent) + 2
             indices = np.asarray(positions)
             children = np.asarray([label[:width] for label in labels[indices]])
@@ -67,8 +71,13 @@ class HierarchicalClassifier:
                 continue
             local = matrix[indices]
             columns = np.unique(local.indices)
-            model = LogisticRegression(C=4.0, max_iter=400, solver="lbfgs")
-            model.fit(local[:, columns], children)
+            model = LogisticRegression(C=4.0, max_iter=400, solver="lbfgs", class_weight=self.class_weight)
+            # Small sparse local fits are much faster without BLAS thread
+            # oversubscription on desktops with many logical processors.
+            with threadpool_limits(limits=1):
+                model.fit(local[:, columns], children)
+            model.coef_ = model.coef_.astype(np.float32)
+            model.intercept_ = model.intercept_.astype(np.float32)
             self.models[parent] = (model, model.classes_, columns)
         self.metadata.update(model_version=MODEL_VERSION,
                              preprocessing_version=PREPROCESSING_VERSION,
@@ -111,7 +120,8 @@ class HierarchicalClassifier:
                        "supported": supported == code and self.counts[code] >= self.min_leaf_samples}
                       for code, score, steps, supported in beam]
         best = candidates[0]
-        accepted = best["supported"] and best["score"] >= self.threshold
+        accepted = (self.metadata.get("training_source") != "tariff_descriptions"
+                    and best["supported"] and best["score"] >= self.threshold)
         return {"cth": best["cth"] if accepted else "", "score": best["score"],
                 "supported_prefix": best["supported_prefix"], "candidates": candidates,
                 "manual_review": not accepted,

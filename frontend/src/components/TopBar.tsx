@@ -25,6 +25,7 @@ export function TopBar() {
         setHealth(h);
         setHealthStarting(false);
         setHealthErr(false);
+        timer = setTimeout(tick, 15000);
       } catch (e: any) {
         if (!alive) return;
         const msg = String(e?.message || "");
@@ -43,7 +44,7 @@ export function TopBar() {
       alive = false;
       if (timer) clearTimeout(timer);
     };
-  }, []);
+  }, [pathname]);
 
   const dotCls = healthErr
     ? "bg-danger"
@@ -58,7 +59,7 @@ export function TopBar() {
     : healthStarting
     ? "Warming up"
     : health
-    ? health.classification_available ? "Ready" : health.enriched_master ? "Training required" : "Tariff data required"
+    ? health.classification_available ? health.training_source === "tariff_descriptions" ? "Tariff-trained" : "Ready" : health.enriched_master ? "Training required" : "Tariff data required"
     : "";
 
   return (

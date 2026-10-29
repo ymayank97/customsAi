@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, type JobDetail, type ResultsPage as ResultData, type RowResult } from "@/lib/api";
 import { AuthGate } from "@/components/AuthGate";
@@ -15,6 +15,7 @@ export default function ResultsPage() {
 }
 
 function Results() {
+  const router = useRouter();
   const { jobId } = useParams<{ jobId: string }>();
   const [job, setJob] = useState<JobDetail | null>(null);
   const [data, setData] = useState<ResultData | null>(null);
@@ -22,6 +23,7 @@ function Results() {
   const [findingsOnly, setFindingsOnly] = useState(false);
   const [editRow, setEditRow] = useState<RowResult | null>(null);
   const [error, setError] = useState("");
+  const [reclassifying, setReclassifying] = useState(false);
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout>;
@@ -46,6 +48,12 @@ function Results() {
     <Link href="/jobs" className="text-sm text-ink-muted">← All audits</Link>
     <div className="flex items-center justify-between gap-4 my-5">
       <h1 className="font-serif text-3xl">{job?.filename || "Audit results"}</h1>
+      <button disabled={job?.status !== "done" || reclassifying} className="btn-secondary disabled:opacity-50" onClick={async () => {
+        setReclassifying(true);
+        try { const run = await api.reclassify(jobId); router.push(`/results/${run.job_id}`); }
+        catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+        finally { setReclassifying(false); }
+      }}>{reclassifying ? "Starting…" : "Reclassify"}</button>
       <button disabled={job?.status !== "done"} className="btn-primary disabled:opacity-50" onClick={async () => {
         try { await api.downloadAnnotated(jobId, job?.filename); }
         catch (e) { setError(e instanceof Error ? e.message : String(e)); }
@@ -54,7 +62,7 @@ function Results() {
     <p className="mb-5 text-sm text-ink-muted">Statistical suggestions require tariff and legal verification. Uncertain classifications remain open for review.</p>
     {summary && <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
       <StatCard label="Rows" value={String(summary.total)} hint={`${summary.review} require classification review`} />
-      <StatCard label="Automatic coverage" value={`${summary.total ? Math.round(100 * summary.classified / summary.total) : 0}%`} />
+      <StatCard label="Suggestions" value={`${summary.suggested ?? summary.classified}/${summary.total}`} hint={`${summary.classified} automatically accepted`} />
       <StatCard label="Potential discrepancies" value={String(summary.findings)} />
       <StatCard label="Potential BCD difference" value={formatINR(summary.revenue_at_risk)} />
     </div>}

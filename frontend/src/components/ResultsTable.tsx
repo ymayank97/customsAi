@@ -28,11 +28,11 @@ function ResultRow({ row, expanded, toggle, onEdit }: {
       <td className="p-3 max-w-sm"><button className="text-left hover:underline" onClick={toggle}
         aria-expanded={expanded}>{row.item_description || "Empty description"}</button></td>
       <td className="p-3 font-mono">{row.declared_cth || "—"}<div className="text-xs text-ink-muted">{formatPercent(row.declared_bcd)}</div></td>
-      <td className="p-3 font-mono">{final.cth_final || "Review required"}
+      <td className="p-3 font-mono">{final.cth_final || final.suggested_cth || "Review required"}
         {final.supported_prefix && !final.cth_final && <div className="text-xs text-ink-muted">Parent: {final.supported_prefix}</div>}
         <div className="text-xs text-ink-muted">{formatPercent(final.bcd_final)}</div></td>
-      <td className="p-3" title="Uncalibrated model score, not a probability of correctness">{final.confidence.toFixed(3)}</td>
-      <td className="p-3 text-xs">{final.manual_queue ? "Needs review" : row.fraud.is_fraud ? "Potential discrepancy" : "Model suggestion"}
+      <td className="p-3" title="Uncalibrated model score, not a probability of correctness">{final.confidence.toPrecision(3)}</td>
+      <td className="p-3 text-xs">{final.manual_queue ? final.suggested_cth ? "Suggestion · verify" : "Needs review" : row.fraud.is_fraud ? "Potential discrepancy" : "Model suggestion"}
         {row.review_flags?.includes("rate_requires_review") && <div>Verify duty rate</div>}</td>
       <td className="p-3"><button className="btn-secondary text-xs" onClick={onEdit}>Correct</button></td>
     </tr>
@@ -40,7 +40,7 @@ function ResultRow({ row, expanded, toggle, onEdit }: {
       <p>{final.reasoning}</p>
       {!!final.candidates.length && <div><p className="text-xs text-ink-muted">Candidate paths for review</p>
         <ul className="mt-1 space-y-1">{final.candidates.map(c => <li key={c.cth}>
-          <span className="font-mono">{c.cth}</span> · {c.description} · score {c.score.toFixed(3)}
+          <span className="font-mono">{c.cth}</span> · {c.description} · score {c.score.toPrecision(3)}
         </li>)}</ul></div>}
       {row.fraud.flag_type && <p>{row.fraud.detail} · {row.fraud.flag_type} · {formatINR(row.fraud.revenue_at_risk)}</p>}
       <ol className="space-y-1 text-xs text-ink-muted">{row.audit_trace?.stages.map((step, i) =>

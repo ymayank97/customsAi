@@ -42,7 +42,15 @@ The builder reads the supplied CUSTADA workbooks, tariff PDFs and notifications.
 
 ## Training
 
-Provide a reviewed CSV with these columns:
+To start without a verified invoice dataset, train an explicitly marked tariff-only baseline:
+
+```powershell
+.venv/Scripts/python.exe -m backend.scripts.train --tariff-only --tariff-version "2025-26"
+```
+
+This fits the same hierarchy using distinct leaf and hierarchy-context views from the supplied catalogue. Views of one tariff row count as one independent source. It never uses the uploaded sample's declared codes as labels. The report explicitly leaves invoice accuracy unmeasured and automatic acceptance disabled. The app displays suggested codes and alternatives, with a **Tariff-trained** badge, so you can classify and review invoices immediately. Suggestions do not generate duty findings until validated and accepted.
+
+For supervised training and independent evaluation, provide a reviewed CSV with these columns:
 
 | Column | Meaning |
 |---|---|
@@ -77,15 +85,17 @@ Outputs:
 - `data/enriched/models/hierarchy.joblib`: compressed local model, loaded once per process.
 - `data/enriched/models/hierarchy.report.json`: 2/4/6/8 digit accuracy and macro F1, top-three accuracy, automatic coverage, accepted accuracy, unseen test codes, and a flat logistic-regression baseline.
 
-The score is an **uncalibrated model score**, not a probability of correctness. The default threshold requires at least twenty validation predictions meeting 95% empirical accuracy. If that evidence is absent, automatic classification stays disabled. This is not a statistical coverage guarantee. All siblings on a predicted path must have training examples; a leaf needs at least three distinct training descriptions. Insufficient support returns a parent prefix and review candidates. Restart the backend after retraining. Changing the master or preprocessing requires retraining.
+The score is an **uncalibrated model score**, not a probability of correctness. The default threshold requires at least twenty validation predictions meeting 95% empirical accuracy. If that evidence is absent, automatic classification stays disabled. This is not a statistical coverage guarantee. All siblings on a predicted path must have training examples; a leaf needs at least three distinct training descriptions. Insufficient support returns a parent prefix and review candidates. The backend detects an atomically replaced model automatically. Changing the master or preprocessing requires retraining.
 
-**There are no expert-verified training examples in this checkout.** Until you supply them and train a model, uploads produce explicit review results; no declared-code or nearest-text fallback pretends to be a trained classifier. Tests use synthetic examples solely to verify implementation behavior.
+**There are no expert-verified invoice training examples in this checkout.** Use tariff-only mode for labelled suggestions, or supply reviewed invoice examples to establish independent accuracy and automatic acceptance. Tests use synthetic examples solely to verify implementation behavior.
 
 ## Run
 
 ```powershell
 .venv/Scripts/python.exe -m uvicorn backend.app.main:app --reload
 ```
+
+Development uses `.next-dev`; production builds use `.next`, so building while the app runs does not overwrite its active bundles.
 
 In another terminal:
 
@@ -95,7 +105,7 @@ npm ci
 npm run dev
 ```
 
-Upload an `.xlsx` file with Description, CTH, and optional BCD / assessable value columns. Results show model suggestions, scores, review reasons and alternative paths. The table requests fifty rows per page. Excel exports include all rows.
+Upload an `.xlsx` file with Description, CTH, and optional BCD / assessable value columns. Results show model suggestions, scores, review reasons and alternative paths. The Reclassify button creates a new run with the current model, preserving the earlier audit. Suggested codes and accepted codes are separate fields in the Excel export. The table requests fifty rows per page. Excel exports include all rows.
 
 `/api/health` separates API readiness from `classification_available`. A missing model allows review workflows; an incompatible model fails readiness. No external AI keys are used.
 

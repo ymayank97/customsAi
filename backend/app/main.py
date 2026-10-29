@@ -208,6 +208,8 @@ def health():
         "classifier": "tfidf_logistic_hierarchy",
         "model_trained": (settings.models_dir / "hierarchy.joblib").exists(),
         "classification_available": _MODELS_READY and bool(get_master()) and (settings.models_dir / "hierarchy.joblib").exists(),
+        "training_source": (get_model().metadata.get("training_source", "verified_invoices")
+                            if _MODELS_READY and get_model() is not None else None),
         "auth_enforced": settings.auth_enforced,
     }
     if not _MODELS_READY:
@@ -280,6 +282,23 @@ def list_uploads(current: User | None = Depends(get_current_user)):
     ]
 
 
+@app.post("/api/uploads/{job_id}/reclassify")
+@limiter.limit("10/hour", key_func=rate_key_user_or_ip)
+def reclassify(job_id: str, request: Request, background: BackgroundTasks,
+               current: User | None = Depends(get_current_user)):
+    original = get_job(job_id, user_id=_job_scope_user_id(current))
+    if original is None:
+        raise HTTPException(404, "Unknown job")
+    if get_model() is None:
+        raise HTTPException(409, "Train a model before reclassifying")
+    path = _assert_under_upload_dir(pathlib.Path(original.input_path))
+    if not path.is_file():
+        raise HTTPException(404, "Original workbook is no longer available")
+    created = create_job(original.filename, path, _job_scope_user_id(current))
+    background.add_task(_process_job, created.id)
+    return {"job_id": created.id, "status": created.status}
+
+
 @app.get("/api/uploads/{job_id}")
 def job_status(job_id: str, current: User | None = Depends(get_current_user)):
     j = get_job(job_id, user_id=_job_scope_user_id(current))
@@ -315,6 +334,7 @@ def job_results(
     summary = {
         "total": len(rows),
         "classified": sum(bool(r["final"]["cth_final"]) for r in rows),
+        "suggested": sum(bool(r["final"].get("suggested_cth") or r["final"]["cth_final"]) for r in rows),
         "review": sum(not bool(r["final"]["cth_final"]) for r in rows),
         "findings": sum(bool(r["fraud"]["is_fraud"]) for r in rows),
         "revenue_at_risk": sum(r["fraud"]["revenue_at_risk"] or 0 for r in rows),

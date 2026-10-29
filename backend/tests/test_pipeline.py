@@ -21,6 +21,20 @@ def test_missing_model_abstains_without_false_findings(monkeypatch):
     assert progress[-1]["completed"] == 1
 
 
+def test_suggestion_is_shown_without_becoming_an_accepted_finding(monkeypatch):
+    candidate = {"cth": "73181500", "score": 0.2, "steps": []}
+    monkeypatch.setattr(classifier, "predict", lambda texts: [{
+        "cth": "", "score": 0.2, "supported_prefix": "73", "reason": "insufficient_support_or_confidence",
+        "training_source": "tariff_descriptions", "candidates": [candidate]}])
+    monkeypatch.setattr(classifier, "get_master_row", lambda code: {"cth": code, "bcd_statutory": 10})
+    result = pipeline.process_rows([{"row_idx": 0, "item_description": "steel bolt", "declared_bcd": 0}])[0]
+    assert result["final"]["suggested_cth"] == "73181500"
+    assert result["final"]["cth_final"] == ""
+    assert result["final"]["manual_queue"]
+    assert result["fraud"]["is_fraud"] is False
+    assert result["fraud"]["revenue_at_risk"] is None
+
+
 def test_importer_code_does_not_affect_predictions(monkeypatch):
     prediction = {"cth": "73181500", "score": 0.9, "manual_review": False, "reason": "accepted", "supported_prefix": "73181500", "candidates": []}
     monkeypatch.setattr(classifier, "predict", lambda texts: [prediction for _ in texts])
@@ -127,4 +141,14 @@ def test_upload_status_results_feedback_and_download(tmp_path, monkeypatch):
         correction = client.post("/api/feedback", json={"job_id": job_id, "row_idx": 0, "item_description": "steel bolt", "corrected_cth": "73181500"})
         assert correction.status_code == 200
         assert client.post("/api/feedback", json={"corrected_cth": "00000000"}).status_code == 422
+        # Reclassification creates a new run rather than appending duplicates
+        # or overwriting the original audit and its workbook.
+        assert client.post(f"/api/uploads/{job_id}/reclassify").status_code == 409
+        monkeypatch.setattr(main, "get_model", lambda: object())
+        rerun = client.post(f"/api/uploads/{job_id}/reclassify")
+        assert rerun.status_code == 200
+        rerun_id = rerun.json()["job_id"]
+        assert rerun_id != job_id
+        assert client.get(f"/api/uploads/{rerun_id}/results").json()["total"] == 2
+        assert client.get(f"/api/uploads/{job_id}/results").json()["total"] == 2
     engine.dispose()
