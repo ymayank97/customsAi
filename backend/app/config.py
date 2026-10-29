@@ -47,7 +47,7 @@ class Settings:
 
     # CORS
     allowed_origins: list[str] = field(default_factory=lambda: [
-        o.strip() for o in _env("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000").split(",") if o.strip()
+        o.strip() for o in _env("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",") if o.strip()
     ])
 
     # Auth (OAuth + JWT). When both are set, protected routes require a valid Bearer token.

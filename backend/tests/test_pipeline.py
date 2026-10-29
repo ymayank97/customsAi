@@ -83,6 +83,16 @@ def test_api_and_health_without_ai_providers(monkeypatch):
     assert client.get("/api/uploads/missing/results?page_size=100000").status_code == 422
 
 
+def test_local_frontend_origins_receive_cors_headers():
+    from backend.app.main import app
+    client = TestClient(app)
+    for origin in ("http://localhost:3000", "http://127.0.0.1:3000"):
+        response = client.get("/api/auth/config", headers={"Origin": origin})
+        assert response.headers["access-control-allow-origin"] == origin
+    response = client.get("/api/auth/config", headers={"Origin": "https://unrelated.example"})
+    assert "access-control-allow-origin" not in response.headers
+
+
 def test_upload_status_results_feedback_and_download(tmp_path, monkeypatch):
     from io import BytesIO
     from sqlalchemy import create_engine

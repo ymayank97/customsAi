@@ -7,7 +7,7 @@ services:
     env_file:
       - backend/.env
     environment:
-      - ALLOWED_ORIGINS=http://localhost:3000
+      - ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
       # JWT_SECRET + GOOGLE_OAUTH_CLIENT_ID in backend/.env enable Google OAuth.
       # DATABASE_URL targets Postgres (otherwise SQLite lives in ./var).
     volumes:
