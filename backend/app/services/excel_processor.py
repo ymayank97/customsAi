@@ -144,7 +144,7 @@ def write_annotated_excel(
     formatted for auditors (frozen header, autofilter, fraud row highlighting)."""
     by_idx = {r["row_idx"]: r for r in results}
     extras: dict[str, list] = {
-        "Suggested CTH": [], "Accepted CTH": [], "Reference BCD %": [], "Method": [], "Model score": [],
+        "Suggested CTH": [], "Accepted CTH": [], "Prediction level": [], "Acceptance basis": [], "Reference BCD %": [], "Method": [], "Model score": [],
         "Fraud Flag": [], "Fraud Type": [], "Revenue at Risk": [],
         "Reasoning": [], "Disagreement": [], "Applicable Notifications": [],
         "Review flags": [], "BCD basis": [],
@@ -158,6 +158,8 @@ def write_annotated_excel(
             continue
         extras["Suggested CTH"].append(r["final"].get("suggested_cth") or r["final"]["cth_final"])
         extras["Accepted CTH"].append(r["final"]["cth_final"])
+        extras["Prediction level"].append(r["final"].get("prediction_level", ""))
+        extras["Acceptance basis"].append(r["final"].get("acceptance_basis", ""))
         extras["Reference BCD %"].append(r["final"]["bcd_final"] if r["final"]["bcd_final"] is not None else "")
         extras["Method"].append(r["final"]["tier_used"])
         extras["Model score"].append(round(r["final"]["confidence"], 3))

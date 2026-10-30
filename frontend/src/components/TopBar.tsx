@@ -36,6 +36,7 @@ export function TopBar() {
         } else {
           setHealthErr(true);
           setHealthStarting(false);
+          timer = setTimeout(tick, 15000);
         }
       }
     };

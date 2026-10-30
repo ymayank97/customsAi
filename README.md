@@ -2,12 +2,15 @@
 
 CPU-only hierarchical tariff classification and Bill of Entry review.
 
-Word and character TF-IDF feed a logistic regression model at each parent in the tariff tree. Prediction keeps three competing paths through chapter (2 digits), heading (4), subheading (6), and tariff item (8). Only real master codes can be suggested. The declared code is compared after prediction and never enters the classifier.
+Word and character TF-IDF feed a logistic regression model at each parent in the tariff tree. Prediction makes conditional decisions in top-down hierarchy order and keeps three alternatives through chapter (2 digits), heading (4), subheading (6), and tariff item (8). Products of probabilities are not used to switch into an unrelated, smaller subtree. Only real master codes can be suggested. The declared code is compared after prediction and never enters the classifier.
 
 ```mermaid
 flowchart LR
     A[Product description] --> B[Conservative cleanup]
-    B --> C[Word and character TF-IDF]
+    B --> P[Exclusion-aware catalogue evidence in tariff-only mode]
+    P --> Q{Unique named item and required attributes?}
+    Q -->|Yes| I
+    Q -->|No| C[Word and character TF-IDF]
     C --> D[Chapter models]
     D --> E[Heading models]
     E --> F[Subheading models]
@@ -48,7 +51,7 @@ To start without a verified invoice dataset, train an explicitly marked tariff-o
 .venv/Scripts/python.exe -m backend.scripts.train --tariff-only --tariff-version "2025-26"
 ```
 
-This fits the same hierarchy using distinct leaf and hierarchy-context views from the supplied catalogue. Views of one tariff row count as one independent source. It never uses the uploaded sample's declared codes as labels. The report explicitly leaves invoice accuracy unmeasured and automatic acceptance disabled. The app displays suggested codes and alternatives, with a **Tariff-trained** badge, so you can classify and review invoices immediately. Suggestions do not generate duty findings until validated and accepted.
+This fits the same hierarchy using distinct leaf and hierarchy-context views from the supplied catalogue. Views of one tariff row count as one independent source. It never uses the uploaded sample's declared codes as labels. The report explicitly leaves invoice accuracy unmeasured and statistical-score acceptance disabled. A separate high-precision catalogue check can accept a unique explicit positive tariff-name match, provided inherited specifications are satisfied. It rejects exclusions, accessory mentions, colliding names and incomplete conditions. The app displays the basis for each acceptance; this is not a calibrated probability or an exemption decision.
 
 For supervised training and independent evaluation, provide a reviewed CSV with these columns:
 
@@ -85,7 +88,7 @@ Outputs:
 - `data/enriched/models/hierarchy.joblib`: compressed local model, loaded once per process.
 - `data/enriched/models/hierarchy.report.json`: 2/4/6/8 digit accuracy and macro F1, top-three accuracy, automatic coverage, accepted accuracy, unseen test codes, and a flat logistic-regression baseline.
 
-The score is an **uncalibrated model score**, not a probability of correctness. The default threshold requires at least twenty validation predictions meeting 95% empirical accuracy. If that evidence is absent, automatic classification stays disabled. This is not a statistical coverage guarantee. All siblings on a predicted path must have training examples; a leaf needs at least three distinct training descriptions. Insufficient support returns a parent prefix and review candidates. The backend detects an atomically replaced model automatically. Changing the master or preprocessing requires retraining.
+The score is an **uncalibrated model score**, not a probability of correctness. The default threshold requires at least twenty validation predictions meeting 95% empirical accuracy. If that evidence is absent, statistical-score acceptance stays disabled; the separate explicit-name catalogue gate can still accept a fully specified unique match. This is not a statistical coverage guarantee. All siblings on a predicted path must have training examples; a leaf needs at least three distinct training descriptions. Insufficient support returns a parent prefix and review candidates. The backend detects an atomically replaced model automatically. Changing the master or preprocessing requires retraining.
 
 **There are no expert-verified invoice training examples in this checkout.** Use tariff-only mode for labelled suggestions, or supply reviewed invoice examples to establish independent accuracy and automatic acceptance. Tests use synthetic examples solely to verify implementation behavior.
 
@@ -119,6 +122,16 @@ Reviewer corrections are saved to the existing database. Export the local unsign
 ```
 
 The export deliberately sets `verified=false`. Review the labels, assign related product groups, and mark approved records `true` before running the training command. Retraining is an explicit offline operation and never runs inside a request.
+
+## Catalogue evidence and partial classification
+
+Tariff-only mode no longer accepts nothing by construction. Unique positive leaf names can produce an accepted eight-digit code, while model guesses remain gated by validation. A named diode is not matched to a tariff entry that says it excludes that diode. A connector mentioned in packaging or machinery exclusions is not treated as the primary article. Parent specifications such as rated voltage still have to be supplied and checked.
+
+When the description supports only a chapter or heading, the app displays that prefix and labels the result **Needs specifications**, instead of displaying a wrong eight-digit guess. The bare term `terminal`, for example, may need its function and electrical characteristics before classification is possible.
+
+`backend/app/ml/catalogue_aliases.json` contains source-linked terminology for broader heading support. The connection/contact element terminology is grounded in the [CBIC notification](https://new.cbic.gov.in/resources/htdocs-cbec/11-2018_cus_exempts_goods_from_sws.pdf); this supports a heading, not automatic eight-digit classification or concession eligibility.
+
+The local `data/enriched/models/accuracy_improvement.report.json` records a nine-case regression comparison at explicitly stated hierarchy levels. It is not a blinded independent invoice benchmark and must not be presented as overall eight-digit accuracy.
 
 ## Tariff rules and rates
 

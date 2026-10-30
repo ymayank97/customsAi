@@ -9,7 +9,7 @@ export function ResultsTable({ rows, onEdit }: { rows: RowResult[]; onEdit: (row
   return <div className="surface overflow-x-auto">
     <table className="w-full text-left text-sm">
       <thead className="border-b border-line bg-page text-xs text-ink-muted">
-        <tr>{["Description", "Declared", "Suggestion", "Model score", "Status", ""].map((label, i) =>
+        <tr>{["Description", "Declared", "Suggestion", "Evidence / score", "Status", ""].map((label, i) =>
           <th className="p-3 font-medium" key={i}>{label}</th>)}</tr>
       </thead>
       <tbody>{rows.map(row => <ResultRow key={row.row_idx} row={row} expanded={expanded === row.row_idx}
@@ -29,10 +29,11 @@ function ResultRow({ row, expanded, toggle, onEdit }: {
         aria-expanded={expanded}>{row.item_description || "Empty description"}</button></td>
       <td className="p-3 font-mono">{row.declared_cth || "—"}<div className="text-xs text-ink-muted">{formatPercent(row.declared_bcd)}</div></td>
       <td className="p-3 font-mono">{final.cth_final || final.suggested_cth || "Review required"}
-        {final.supported_prefix && !final.cth_final && <div className="text-xs text-ink-muted">Parent: {final.supported_prefix}</div>}
+        {final.suggested_cth && final.suggested_cth.length < 8 && <div className="text-xs font-sans text-ink-muted">{final.prediction_level} · item needs details</div>}
+        {final.supported_prefix && !final.cth_final && final.supported_prefix !== final.suggested_cth && <div className="text-xs text-ink-muted">Parent: {final.supported_prefix}</div>}
         <div className="text-xs text-ink-muted">{formatPercent(final.bcd_final)}</div></td>
-      <td className="p-3" title="Uncalibrated model score, not a probability of correctness">{final.confidence.toPrecision(3)}</td>
-      <td className="p-3 text-xs">{final.manual_queue ? final.suggested_cth ? "Suggestion · verify" : "Needs review" : row.fraud.is_fraud ? "Potential discrepancy" : "Model suggestion"}
+      <td className="p-3" title="Explicit names and family terms are catalogue evidence. Numeric model scores are uncalibrated.">{final.acceptance_basis === "unique_positive_tariff_phrase" ? "Explicit name" : final.suggested_cth && final.suggested_cth.length < 8 ? "Family terms" : !final.suggested_cth && !final.cth_final ? "Insufficient" : final.confidence.toPrecision(3)}</td>
+      <td className="p-3 text-xs">{final.manual_queue ? final.suggested_cth && final.suggested_cth.length < 8 ? "Needs specifications" : "Needs review" : final.acceptance_basis === "unique_positive_tariff_phrase" ? "Accepted · tariff name" : row.fraud.is_fraud ? "Potential discrepancy" : "Accepted · model"}
         {row.review_flags?.includes("rate_requires_review") && <div>Verify duty rate</div>}</td>
       <td className="p-3"><button className="btn-secondary text-xs" onClick={onEdit}>Correct</button></td>
     </tr>

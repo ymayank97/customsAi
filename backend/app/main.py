@@ -201,18 +201,25 @@ async def enforce_max_upload_body(request: Request, call_next):
 @app.get("/api/health")
 def health():
     master = settings.data_dir / "cth_master.parquet"
+    model = None
+    ready = True
+    try:
+        master_rows = get_master()
+        model = get_model()
+    except (ValueError, OSError):
+        master_rows = {}
+        ready = False
     body = {
-        "status": "ok" if _MODELS_READY else "starting",
-        "models_ready": _MODELS_READY,
+        "status": "ok" if ready else "starting",
+        "models_ready": ready,
         "enriched_master": master.exists(),
         "classifier": "tfidf_logistic_hierarchy",
         "model_trained": (settings.models_dir / "hierarchy.joblib").exists(),
-        "classification_available": _MODELS_READY and bool(get_master()) and (settings.models_dir / "hierarchy.joblib").exists(),
-        "training_source": (get_model().metadata.get("training_source", "verified_invoices")
-                            if _MODELS_READY and get_model() is not None else None),
+        "classification_available": ready and bool(master_rows) and model is not None,
+        "training_source": model.metadata.get("training_source", "verified_invoices") if model is not None else None,
         "auth_enforced": settings.auth_enforced,
     }
-    if not _MODELS_READY:
+    if not ready:
         return JSONResponse(body, status_code=503)
     return body
 

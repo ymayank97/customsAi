@@ -107,6 +107,17 @@ def test_local_frontend_origins_receive_cors_headers():
     assert "access-control-allow-origin" not in response.headers
 
 
+def test_health_recovers_after_valid_model_replaces_missing_artifact(monkeypatch):
+    from types import SimpleNamespace
+    from backend.app import main
+    monkeypatch.setattr(main, "_MODELS_READY", False)
+    monkeypatch.setattr(main, "get_master", lambda: {"73181500": {"cth": "73181500"}})
+    monkeypatch.setattr(main, "get_model", lambda: SimpleNamespace(metadata={"training_source": "tariff_descriptions"}))
+    response = TestClient(main.app).get('/api/health')
+    assert response.status_code == 200
+    assert response.json()['classification_available']
+
+
 def test_upload_status_results_feedback_and_download(tmp_path, monkeypatch):
     from io import BytesIO
     from sqlalchemy import create_engine

@@ -14,7 +14,7 @@ from sklearn.pipeline import FeatureUnion
 
 from backend.app.core.text_cleaning import PREPROCESSING_VERSION, clean_description
 
-MODEL_VERSION = 1
+MODEL_VERSION = 2
 LEVELS = (2, 4, 6, 8)
 
 
@@ -89,9 +89,30 @@ class HierarchicalClassifier:
         if not descriptions:
             return []
         matrix = self.features.transform(descriptions).tocsr()
+        if self.metadata.get("training_source") == "tariff_descriptions" and hasattr(self, "catalogue"):
+            return [self._predict_catalogue(matrix[i], text) for i, text in enumerate(descriptions)]
         return [self._predict_row(matrix[i], text) for i, text in enumerate(descriptions)]
 
-    def _predict_row(self, row, description):
+    def _predict_catalogue(self, row, description):
+        evidence = self.catalogue.inspect(description)
+        if evidence["accepted"]:
+            code = evidence["accepted"]
+            steps = [{"parent": code[:width - 2], "code": code[:width], "score": 1.0,
+                      "all_children_trained": True} for width in LEVELS]
+            return {"cth": code, "suggested_cth": code, "score": 1.0, "supported_prefix": code,
+                    "manual_review": False, "reason": "unique_positive_tariff_phrase",
+                    "acceptance_basis": "unique_positive_tariff_phrase", "evidence": evidence,
+                    "candidates": [{"cth": code, "score": 1.0, "steps": steps,
+                                    "supported_prefix": code, "supported": True}]}
+        if not evidence["headings"]:
+            return {**self._empty("insufficient_product_evidence"), "evidence": evidence}
+        prediction = self._predict_row(row, description, evidence["headings"])
+        # A recognized family does not determine its national eight-digit leaf.
+        return {**prediction, "cth": "", "suggested_cth": evidence["prefix"],
+                "supported_prefix": evidence["prefix"], "manual_review": True,
+                "reason": "missing_distinguishing_attributes", "evidence": evidence}
+
+    def _predict_row(self, row, description, allowed_headings=None):
         if not clean_description(description) or row.nnz == 0:
             return self._empty("empty_or_unknown_description")
         # Uncalibrated product of conditional class probabilities. Never
@@ -108,11 +129,17 @@ class HierarchicalClassifier:
                 complete = set(classes) == set(self.tree[parent])
                 for child, probability in zip(classes, probabilities):
                     child, probability = str(child), float(probability)
+                    if allowed_headings and width <= 4 and not any(h.startswith(child) for h in allowed_headings):
+                        continue
                     step = {"parent": parent, "code": child, "score": probability,
                             "all_children_trained": complete}
                     prefix = child if complete and supported == parent and probability >= 0.7 else supported
                     expanded.append((child, score * probability, steps + [step], prefix))
-            beam = sorted(expanded, key=lambda path: (-path[1], path[0]))[:self.beam_width]
+            # Local classification is top-down. Comparing products across
+            # branches systematically preferred small, easy subtrees even when
+            # their chapter prediction was weaker. Keep conditional decisions
+            # in hierarchy order; the product is only a conservative score.
+            beam = sorted(expanded, key=lambda path: (tuple(-s["score"] for s in path[2]), path[0]))[:self.beam_width]
             if not beam:
                 return self._empty("unsupported_branch")
         candidates = [{"cth": code, "score": score, "steps": steps,

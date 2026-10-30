@@ -19,7 +19,7 @@ def _result(row, prediction):
     # A missing/changed master can never produce a final invalid code.
     if code and not master:
         code = ""
-    suggested = candidates[0]["cth"] if candidates else code
+    suggested = prediction.get("suggested_cth", candidates[0]["cth"] if candidates else code)
     conflicts = legal_rules.conflicts(row.get("item_description", ""), code or suggested)
     if conflicts:
         code = ""
@@ -37,15 +37,21 @@ def _result(row, prediction):
               "Score is uncalibrated; this is a statistical suggestion, not a legal determination."
               if code else "No automatic eight-digit classification: " + ("reviewed exclusion rule conflict" if conflicts else prediction["reason"].replace("_", " ")))
     if source == "tariff_descriptions" and suggested:
-        reason = "Tariff-trained model suggestion; invoice accuracy has not been validated. Verify the product attributes and leaf text before accepting this code."
+        if code and prediction.get("acceptance_basis") == "unique_positive_tariff_phrase":
+            reason = f"Matched a unique explicit tariff name: {prediction['evidence']['matched_phrase']}."
+        else:
+            reason = f"The description supports tariff prefix {suggested}. Confirm the specifications that distinguish the alternative eight-digit items."
     prefix = "" if conflicts else prediction["supported_prefix"]
     final = {
         "cth_final": code, "bcd_final": rate["bcd_audit"],
         "suggested_cth": suggested, "training_source": source,
+        "acceptance_basis": prediction.get("acceptance_basis", "validated_model" if code else ""),
+        "prediction_level": {2: "chapter", 4: "heading", 6: "subheading", 8: "tariff_item"}.get(len(suggested), "unresolved"),
         "tier_used": "manual_queue" if manual else "hierarchical_model",
         "confidence": prediction["score"], "reasoning": reason,
         "candidates": candidates, "disagreement": "", "manual_queue": manual,
         "supported_prefix": prefix,
+        "evidence": prediction.get("evidence", {}),
         "alternatives": [c["cth"] for c in candidates],
         "breakdown": {
             "chapter": (code or prefix)[:2], "chapter_title": master.get("chapter_title", ""),

@@ -13,6 +13,6 @@ The active architecture is CPU-only hierarchical classification: word/character 
 - `backend/app/scripts/build_enriched_dataset.py`: offline tariff ingestion. Optional builder dependencies are separate from runtime.
 - `frontend`: Next.js uploads, paginated results and corrections; no LLM chat.
 
-No verified invoice training dataset is bundled. `train --tariff-only` bootstraps clearly marked catalogue suggestions with automatic acceptance disabled. Never substitute declared codes or schedule prototypes for verified invoice labels or report catalogue/synthetic-test results as real invoice accuracy. No model training or index building in API startup/requests. Preserve auth, per-user scoping and migration history. Source tariff documents are needed for reproducible builds.
+No verified invoice training dataset is bundled. `train --tariff-only` bootstraps catalogue suggestions; only unique positive tariff-name matches may bypass the statistical acceptance gate. Exclusions, parent conditions and ambiguous names still require review. Partial results explicitly show chapter/heading precision. Never substitute declared codes or schedule prototypes for verified invoice labels or report catalogue/synthetic-test results as real invoice accuracy. No model training or index building in API startup/requests. Preserve auth, per-user scoping and migration history. Source tariff documents are needed for reproducible builds.
 
 Checks: `python -m pytest backend/tests -q`; in frontend: `npm run typecheck` and `npm run build`.

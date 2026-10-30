@@ -23,7 +23,7 @@ export function CorrectionDialog({ row, jobId, onClose, onSaved }: Props) {
 
   useEffect(() => {
     if (row) {
-      setCorrectedCth(row.final?.cth_final || row.final?.suggested_cth || row.declared_cth || "");
+      setCorrectedCth(row.final?.cth_final || (row.final?.suggested_cth?.length === 8 ? row.final.suggested_cth : "") || row.declared_cth || "");
       setCorrectedBcd(
         row.final?.bcd_final != null ? String(row.final.bcd_final) : ""
       );
@@ -101,7 +101,7 @@ export function CorrectionDialog({ row, jobId, onClose, onSaved }: Props) {
             </div>
             <div>
               <span className="text-ink-muted">Model suggestion:</span>{" "}
-              <span className="font-mono">{row.final?.cth_final || "—"}</span>
+              <span className="font-mono">{row.final?.cth_final || row.final?.suggested_cth || "—"}</span>
             </div>
           </div>
         </div>

@@ -19,6 +19,7 @@ from sklearn.model_selection import GroupShuffleSplit
 from backend.app.config import settings
 from backend.app.core.text_cleaning import clean_description
 from backend.app.ml.hierarchy import HierarchicalClassifier, LEVELS
+from backend.app.ml.catalogue import CatalogueEvidence
 
 
 def taxonomy_hash(codes):
@@ -74,7 +75,7 @@ def select_threshold(predictions, labels, target=0.95, min_accepted=20):
     eligible = [(p["score"], p["candidates"][0]["cth"] == y)
                 for p, y in zip(predictions, labels)
                 if p["candidates"] and p["candidates"][0]["supported"]]
-    for threshold in sorted({score for score, _ in eligible if score >= 0.5}):
+    for threshold in sorted({score for score, _ in eligible}):
         accepted = [correct for score, correct in eligible if score >= threshold]
         if len(accepted) >= min_accepted and np.mean(accepted) >= target:
             return float(threshold)
@@ -165,13 +166,16 @@ def bootstrap(master: Path, output: Path, tariff_version: str):
         threshold=model.threshold,
         invoice_accuracy=None,
         independent_catalogue_rows=len(codes),
+        decoder="top_down_conditional",
+        catalogue_evidence_version=1,
     )
+    model.catalogue = CatalogueEvidence(frame.to_dict("records"))
     report = {"metadata": model.metadata, "catalogue_codes": len(codes),
               "trained_branches": len(model.models),
               "fit_seconds": round(time.perf_counter() - started, 2),
               "invoice_test_accuracy": None,
-              "automatic_acceptance_enabled": False,
-              "evaluation_note": "Catalogue-trained suggestions only. No verified invoice test set is available; accuracy and acceptance thresholds are not established."}
+              "automatic_acceptance_enabled": "unique_positive_tariff_phrase_only",
+              "evaluation_note": "Only unique explicit catalogue-name matches can be accepted. Statistical guesses and ambiguous items require review. No independent invoice accuracy claim."}
     model.save(output)
     report["model_bytes"] = output.stat().st_size
     output.with_suffix(".report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")

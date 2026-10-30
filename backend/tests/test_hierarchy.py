@@ -132,7 +132,25 @@ def test_catalogue_training_does_not_claim_verified_accuracy(tmp_path):
     assert set(model.counts.values()) == {1}
     prediction = model.predict(["threaded steel bolts"])[0]
     assert prediction["candidates"]
-    assert not prediction["cth"]
+    assert prediction["cth"] == "73181500"
+    assert prediction["acceptance_basis"] == "unique_positive_tariff_phrase"
+    assert not model.predict(["unknown thing"])[0]["cth"]
+
+
+def test_top_down_decoder_does_not_favor_smaller_subtrees():
+    import numpy as np
+    labels = ["52081100", "52081200", "52091100", "73181500"]
+    model = HierarchicalClassifier().fit(["cotton textile", "woven textile", "cotton cloth", "steel bolt"], labels, labels)
+    class Fixed:
+        def __init__(self, probabilities):
+            self.probabilities = probabilities
+        def predict_proba(self, row):
+            return np.array([self.probabilities])
+    model.models[""] = (Fixed([0.6, 0.4]), np.array(["52", "73"]), np.array([0]))
+    model.models["52"] = (Fixed([0.5, 0.5]), np.array(["5208", "5209"]), np.array([0]))
+    model.models["5208"] = (Fixed([0.5, 0.5]), np.array(["520811", "520812"]), np.array([0]))
+    result = model.predict(["cotton textile"])[0]
+    assert result["candidates"][0]["cth"].startswith("52")
 
 
 def test_custada_hierarchy_keeps_only_ancestors(monkeypatch):

@@ -1,0 +1,9 @@
+[
+  {
+    "all_tokens": ["contact", "element"],
+    "context_any": ["wire", "cable", "connector"],
+    "headings": ["8536"],
+    "source": "https://new.cbic.gov.in/resources/htdocs-cbec/11-2018_cus_exempts_goods_from_sws.pdf",
+    "scope": "Terminology only: connection/contact elements for wires and cables. Does not establish an eight-digit item or exemption eligibility."
+  }
+]

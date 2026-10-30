@@ -63,6 +63,7 @@ export interface RowResult {
     tier_used: "hierarchical_model" | "manual_queue"; candidates: Candidate[];
     supported_prefix: string; manual_queue: boolean;
     suggested_cth?: string; training_source?: string;
+    acceptance_basis?: string; prediction_level?: string;
   };
   fraud: { is_fraud: boolean; flag_type: string; revenue_at_risk: number | null; detail: string };
   review_flags: string[];
