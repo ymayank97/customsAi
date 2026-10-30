@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 from openpyxl import load_workbook
 
-from backend.app.services.bcd_assessment import assess
+from backend.app.services.bcd_assessment import assess, attach
 from backend.app.services.excel_processor import write_annotated_excel
 
 
@@ -66,7 +66,8 @@ def test_cth_mismatch_remains_red_even_when_bcd_matches():
     assert assessment["potential_underpayment"] is False
 
 
-def test_export_includes_priority_and_highlights_both_incorrect_and_uncertain_rows(tmp_path):
+def test_export_includes_priority_and_highlights_both_incorrect_and_uncertain_rows(tmp_path, monkeypatch):
+    monkeypatch.setattr("backend.app.services.classifier.get_master_row", lambda code: None)
     rows = [result(10, 10), result(5, 10), result(10, 5), result(0, 0)]
     rows[-1]["rate_resolution"]["bcd_basis"] = "manual_review"
     for i, row in enumerate(rows):
@@ -87,3 +88,33 @@ def test_export_includes_priority_and_highlights_both_incorrect_and_uncertain_ro
         assert all(cell.fill.fgColor.rgb == "00FFD7D7" for cell in sheet[row])
     assert sheet.cell(1, headers["BCD match score /100"]).comment
     workbook.close()
+
+
+def test_estimate_shows_candidate_and_rate_agreement_without_accepting_it(monkeypatch):
+    monkeypatch.setattr("backend.app.services.classifier.get_master_row", lambda code: {"bcd_statutory": 10})
+    row = result(5)
+    row["final"].update(cth_final="", bcd_final=None, manual_queue=True,
+                        suggested_cth="85", candidates=[{"cth": "85366990"}])
+    enriched = attach(row)
+    assert enriched["prediction_estimate"]["cth"] == "85366990"
+    assert enriched["prediction_estimate"]["bcd"] == 10
+    assessment = enriched["bcd_assessment"]
+    assert assessment["score"] == 50
+    assert assessment["status"] == "estimated"
+    assert not assessment["verified"]
+    assert assessment["requires_review"]
+    assert assessment["potential_underpayment"] is None
+    assert enriched["final"]["cth_final"] == ""
+    assert row.get("prediction_estimate") is None
+    row["review_flags"] = ["legal_rule_conflict"]
+    assert attach(row)["prediction_estimate"]["cth"] == ""
+    assert attach(row)["bcd_assessment"]["score"] is None
+
+
+def test_no_candidate_never_copies_declared_code_or_rate(monkeypatch):
+    monkeypatch.setattr("backend.app.services.classifier.get_master_row", lambda code: None)
+    row = result()
+    row["final"].update(cth_final="", bcd_final=None, manual_queue=True, candidates=[])
+    enriched = attach(row)
+    assert enriched["prediction_estimate"]["cth"] == ""
+    assert enriched["bcd_assessment"]["score"] is None

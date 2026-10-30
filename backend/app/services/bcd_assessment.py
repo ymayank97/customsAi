@@ -66,4 +66,22 @@ def assess(row):
 
 def attach(row):
     """Recalculate for historical results as well as newly processed rows."""
-    return {**row, "bcd_assessment": assess(row)}
+    final = row.get("final") or {}
+    candidates = final.get("candidates") or []
+    code = final.get("cth_final") or (candidates[0].get("cth", "") if candidates else "")
+    estimate = {"cth": code, "bcd": None, "basis": "unavailable"}
+    if len(code) == 8 and "legal_rule_conflict" not in (row.get("review_flags") or []):
+        from backend.app.services.classifier import get_master_row
+        master = get_master_row(code) or next((c for c in candidates if c.get("cth") == code), {})
+        estimate.update(bcd=_rate(master.get("bcd_statutory")), basis="catalogue_statutory_estimate")
+    else:
+        estimate["cth"] = ""
+    assessment = assess(row)
+    if not assessment["verified"] and estimate["bcd"] is not None and assessment["provided_rate"] is not None:
+        provided, reference = assessment["provided_rate"], estimate["bcd"]
+        difference = reference - provided
+        score = 100 if abs(difference) <= RATE_TOLERANCE else 100 * (1 - abs(difference) / max(reference, provided))
+        assessment.update(score=round(max(0, min(100, score)), 1), status="estimated",
+                          reference_rate=reference, difference_pp=round(difference, 6),
+                          reason="Rate agreement with the estimated CTH's statutory catalogue rate. Classification and notification eligibility remain unverified; this is not a probability of correctness.")
+    return {**row, "prediction_estimate": estimate, "bcd_assessment": assessment}

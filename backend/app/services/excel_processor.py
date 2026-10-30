@@ -10,7 +10,7 @@ from openpyxl import load_workbook
 from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from backend.app.services.bcd_assessment import assess
+from backend.app.services.bcd_assessment import attach
 
 # Column synonyms for input mapping (case-insensitive substring match)
 DESC_KEYS = ["item desc", "item description", "description", "goods description"]
@@ -154,6 +154,7 @@ def write_annotated_excel(
         "Fraud review priority": [], "Potential BCD underpayment": [],
         "BCD difference (percentage points)": [], "BCD comparison reason": [], "Needs review": [],
         "Comments": [],
+        "Estimated CTH": [], "Estimated statutory BCD %": [],
     }
     for i in range(len(input_df)):
         r = by_idx.get(i)
@@ -178,7 +179,10 @@ def write_annotated_excel(
         extras["Applicable Notifications"].append(", ".join(r.get("applicable_notifications", [])))
         extras["Review flags"].append(", ".join(r.get("review_flags", [])))
         rr = r.get("rate_resolution") or {}
-        assessment = assess(r)
+        enriched = attach(r)
+        assessment = enriched["bcd_assessment"]
+        extras["Estimated CTH"].append(enriched["prediction_estimate"]["cth"])
+        extras["Estimated statutory BCD %"].append(enriched["prediction_estimate"]["bcd"])
         extras["BCD match score /100"].append(assessment["score"])
         extras["BCD comparison status"].append(assessment["status"].replace("_", " ").title())
         extras["Fraud review priority"].append(assessment["fraud_review_priority"])
@@ -211,7 +215,7 @@ def write_annotated_excel(
 
         score_column = list(df.columns).index("BCD match score /100") + 1
         ws.cell(1, score_column).comment = Comment(
-            "Rate agreement, not a probability of correctness or fraud. 100 = equal verified rates; otherwise 100 × (1 − |provided − reference| / max(provided, reference)). Blank = unverified. Equal zero rates score 100.", "customsAI")
+            "Rate agreement, not a probability of correctness or fraud. 100 = equal rates; otherwise 100 × (1 − |provided − reference| / max(provided, reference)). Estimated comparisons use the candidate's statutory rate without confirming notification eligibility. Blank = no comparable rates. Equal zero rates score 100.", "customsAI")
         priority_column = list(df.columns).index("Fraud review priority") + 1
         ws.cell(1, priority_column).comment = Comment(
             "High = potential verified-rate underpayment; Medium = CTH mismatch with equal BCD; Low = no BCD underpayment indicated; Review required = insufficient evidence. Red includes uncertainty and does not establish fraud.", "customsAI")

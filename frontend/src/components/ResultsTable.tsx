@@ -30,13 +30,14 @@ function ResultRow({ row, expanded, toggle, onEdit }: {
       <td className="p-3 max-w-sm"><button className="text-left hover:underline" onClick={toggle}
         aria-expanded={expanded}>{row.item_description || "Empty description"}</button></td>
       <td className="p-3 font-mono">{row.declared_cth || "—"}<div className="text-xs text-ink-muted">{formatPercent(row.declared_bcd)}</div></td>
-      <td className="p-3 font-mono">{final.cth_final || final.suggested_cth || "Review required"}
-        {final.suggested_cth && final.suggested_cth.length < 8 && <div className="text-xs font-sans text-ink-muted">{final.prediction_level} · item needs details</div>}
+      <td className="p-3 font-mono">{final.cth_final || row.prediction_estimate?.cth || final.suggested_cth || "Review required"}
+        {final.manual_queue && row.prediction_estimate?.cth && <div className="text-xs font-sans text-danger">Estimated CTH · needs review</div>}
+        {final.suggested_cth && final.suggested_cth.length < 8 && <div className="text-xs font-sans text-ink-muted">Supported: {final.suggested_cth} · {final.prediction_level}</div>}
         {final.supported_prefix && !final.cth_final && final.supported_prefix !== final.suggested_cth && <div className="text-xs text-ink-muted">Parent: {final.supported_prefix}</div>}
-        <div className="text-xs text-ink-muted">{formatPercent(final.bcd_final)}</div></td>
+        <div className="text-xs text-ink-muted">{formatPercent(final.bcd_final ?? row.prediction_estimate?.bcd ?? null)}{final.bcd_final == null && row.prediction_estimate?.bcd != null ? " · statutory estimate" : ""}</div></td>
       <td className="p-3" title={assessment?.reason || "BCD comparison is unverified."}>
         <span className={`font-semibold ${needsReview ? "text-danger" : "text-success"}`}>{assessment?.score == null ? "— /100" : `${assessment.score}/100`}</span>
-        <div className="text-xs">{assessment?.status === "match" ? "Rate match" : assessment?.status === "under_declared" ? "BCD too low" : assessment?.status === "over_declared" ? "BCD too high" : "Unverified"}</div>
+        <div className="text-xs">{assessment?.status === "estimated" ? "Estimated comparison" : assessment?.status === "match" ? "Rate match" : assessment?.status === "under_declared" ? "BCD too low" : assessment?.status === "over_declared" ? "BCD too high" : "Unverified"}</div>
       </td>
       <td className="p-3 text-xs" title={assessment?.reason}><span className={assessment?.fraud_review_priority === "High" ? "font-bold text-danger" : ""}>{assessment?.fraud_review_priority || "Review required"}</span></td>
       <td className="p-3 text-xs">{final.manual_queue ? final.suggested_cth && final.suggested_cth.length < 8 ? "Needs specifications" : "Needs review" : final.acceptance_basis === "unique_positive_tariff_phrase" ? "Accepted · tariff name" : row.fraud.is_fraud ? "Potential discrepancy" : "Accepted · model"}
@@ -46,7 +47,7 @@ function ResultRow({ row, expanded, toggle, onEdit }: {
     {expanded && <tr className={`border-b border-line ${needsReview ? "bg-danger/10" : "bg-page/40"}`}><td colSpan={7} className="p-4 space-y-3">
       <p>{final.reasoning}</p>
       <p className="text-sm">{assessment?.reason || "BCD comparison is unverified."}</p>
-      <p className="text-xs text-ink-muted">The score measures agreement with a verified BCD reference. It is not a fraud probability. Red rows include uncertain results.</p>
+      <p className="text-xs text-ink-muted">The score measures rate agreement, using a statutory estimate when verification is pending. It is not classification confidence or a fraud probability. Red rows include uncertain results.</p>
       {!!final.candidates.length && <div><p className="text-xs text-ink-muted">Candidate paths for review</p>
         <ul className="mt-1 space-y-1">{final.candidates.map(c => <li key={c.cth}>
           <span className="font-mono">{c.cth}</span> · {c.description} · score {c.score.toPrecision(3)}
