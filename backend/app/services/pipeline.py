@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from backend.app.config import settings
 from backend.app.core.text_cleaning import clean_description
-from backend.app.services import classifier, fraud_detector, legal_rules, rate_resolver
+from backend.app.services import bcd_assessment, classifier, fraud_detector, legal_rules, rate_resolver
 
 
 def _result(row, prediction):
@@ -100,7 +100,7 @@ def process_rows(rows, progress=None, batch_size=None):
     for offset in range(0, len(rows), size):
         batch = rows[offset:offset + size]
         predictions = classifier.predict([r.get("item_description", "") for r in batch])
-        results.extend(_result(row, prediction) for row, prediction in zip(batch, predictions))
+        results.extend(bcd_assessment.attach(_result(row, prediction)) for row, prediction in zip(batch, predictions))
         if progress:
             progress({"phase": "classify", "completed": len(results), "total": len(rows)})
     if progress:

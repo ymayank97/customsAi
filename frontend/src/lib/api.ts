@@ -67,6 +67,14 @@ export interface RowResult {
   };
   fraud: { is_fraud: boolean; flag_type: string; revenue_at_risk: number | null; detail: string };
   review_flags: string[];
+  bcd_assessment?: {
+    score: number | null;
+    status: "match" | "under_declared" | "over_declared" | "unverified";
+    provided_rate: number | null; reference_rate: number | null;
+    difference_pp: number | null; verified: boolean; requires_review: boolean;
+    fraud_review_priority: "High" | "Medium" | "Low" | "Review required";
+    potential_underpayment: boolean | null; reason: string;
+  };
   audit_trace: { summary: string; stages: { stage: string; explanation: string }[] };
 }
 export interface ResultsPage {

@@ -7,8 +7,10 @@ import re
 
 import pandas as pd
 from openpyxl import load_workbook
+from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+from backend.app.services.bcd_assessment import assess
 
 # Column synonyms for input mapping (case-insensitive substring match)
 DESC_KEYS = ["item desc", "item description", "description", "goods description"]
@@ -148,6 +150,9 @@ def write_annotated_excel(
         "Fraud Flag": [], "Fraud Type": [], "Revenue at Risk": [],
         "Reasoning": [], "Disagreement": [], "Applicable Notifications": [],
         "Review flags": [], "BCD basis": [],
+        "BCD match score /100": [], "BCD comparison status": [],
+        "Fraud review priority": [], "Potential BCD underpayment": [],
+        "BCD difference (percentage points)": [], "BCD comparison reason": [], "Needs review": [],
         "Comments": [],
     }
     for i in range(len(input_df)):
@@ -173,6 +178,15 @@ def write_annotated_excel(
         extras["Applicable Notifications"].append(", ".join(r.get("applicable_notifications", [])))
         extras["Review flags"].append(", ".join(r.get("review_flags", [])))
         rr = r.get("rate_resolution") or {}
+        assessment = assess(r)
+        extras["BCD match score /100"].append(assessment["score"])
+        extras["BCD comparison status"].append(assessment["status"].replace("_", " ").title())
+        extras["Fraud review priority"].append(assessment["fraud_review_priority"])
+        potential = assessment["potential_underpayment"]
+        extras["Potential BCD underpayment"].append("UNKNOWN" if potential is None else "YES" if potential else "NO")
+        extras["BCD difference (percentage points)"].append(assessment["difference_pp"])
+        extras["BCD comparison reason"].append(assessment["reason"])
+        extras["Needs review"].append("YES" if assessment["requires_review"] else "NO")
         extras["BCD basis"].append(str(rr.get("bcd_basis", "") or ""))
         extras["Comments"].append(_trim_cell(_format_audit_comment(r)))
 
@@ -195,12 +209,15 @@ def write_annotated_excel(
         if df.shape[0]:
             ws.auto_filter.ref = ws.dimensions
 
-        fraud_col_idx = list(df.columns).index("Fraud Flag") + 1
-        flag_col_idx = list(df.columns).index("Fraud Type") + 1
+        score_column = list(df.columns).index("BCD match score /100") + 1
+        ws.cell(1, score_column).comment = Comment(
+            "Rate agreement, not a probability of correctness or fraud. 100 = equal verified rates; otherwise 100 × (1 − |provided − reference| / max(provided, reference)). Blank = unverified. Equal zero rates score 100.", "customsAI")
+        priority_column = list(df.columns).index("Fraud review priority") + 1
+        ws.cell(1, priority_column).comment = Comment(
+            "High = potential verified-rate underpayment; Medium = CTH mismatch with equal BCD; Low = no BCD underpayment indicated; Review required = insufficient evidence. Red includes uncertainty and does not establish fraud.", "customsAI")
+        review_column = list(df.columns).index("Needs review") + 1
         for r_idx in range(2, len(df) + 2):
-            is_fraud = (ws.cell(row=r_idx, column=fraud_col_idx).value or "") == "YES"
-            ftype = ws.cell(row=r_idx, column=flag_col_idx).value or ""
-            if is_fraud and ("Under-declared" in ftype or ftype == "Both"):
+            if ws.cell(row=r_idx, column=review_column).value == "YES":
                 for c_idx in range(1, len(df.columns) + 1):
                     ws.cell(row=r_idx, column=c_idx).fill = FRAUD_UNDER_FILL
                 ws.cell(row=r_idx, column=1).border = BORDER_RED

@@ -60,6 +60,7 @@ function Results() {
       }}>Download Excel</button>
     </div>
     <p className="mb-5 text-sm text-ink-muted">Statistical suggestions require tariff and legal verification. Uncertain classifications remain open for review.</p>
+    <p className="mb-5 text-xs text-ink-muted">BCD match scores compare your rate with a verified reference; — means unverified. Red rows have a mismatch or uncertainty. Fraud review priority is not proof of fraud.</p>
     {summary && <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
       <StatCard label="Rows" value={String(summary.total)} hint={`${summary.review} require classification review`} />
       <StatCard label="Suggestions" value={`${summary.suggested ?? summary.classified}/${summary.total}`} hint={`${summary.classified} automatically accepted`} />

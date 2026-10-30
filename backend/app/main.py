@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.background import BackgroundTask
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -26,7 +27,7 @@ from backend.app.job_store import (
     update as update_job,
 )
 from backend.app.schemas.api_requests import FeedbackSubmitBody, ReevaluateBody
-from backend.app.services import excel_processor, pipeline
+from backend.app.services import bcd_assessment, excel_processor, pipeline
 from backend.app.services.classifier import get_master, get_master_row, get_model
 from backend.app.rate_limit import limiter, rate_key_user_or_ip
 
@@ -337,7 +338,7 @@ def job_results(
     j = get_job(job_id, user_id=_job_scope_user_id(current))
     if not j:
         raise HTTPException(404, "Unknown job")
-    rows = j.results
+    rows = [bcd_assessment.attach(row) for row in j.results]
     summary = {
         "total": len(rows),
         "classified": sum(bool(r["final"]["cth_final"]) for r in rows),
@@ -370,10 +371,24 @@ def download_annotated(job_id: str, current: User | None = Depends(get_current_u
     out = pathlib.Path(j.output_path).resolve()
     if not out.is_file() or not out.is_relative_to(RESULTS_DIR.resolve()):
         raise HTTPException(404, "No annotated file available")
+    # Regenerate from persisted decisions so historical downloads get the same
+    # scoring columns as the current table. A unique temporary file avoids
+    # concurrent downloads overwriting one another or the original audit.
+    source = _assert_under_upload_dir(pathlib.Path(j.input_path))
+    if not source.is_file():
+        raise HTTPException(404, "Original workbook is required to export the BCD assessment")
+    frame, _ = excel_processor.load_be_excel(source)
+    export_path = RESULTS_DIR / f".download_{j.id}_{uuid.uuid4().hex}.xlsx"
+    try:
+        excel_processor.write_annotated_excel(frame, j.results, export_path)
+    except Exception:
+        export_path.unlink(missing_ok=True)
+        raise
     return FileResponse(
-        str(out),
+        str(export_path),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         filename=f"audit_{j.id}.xlsx",
+        background=BackgroundTask(export_path.unlink, missing_ok=True),
     )
 
 

@@ -112,6 +112,14 @@ Upload an `.xlsx` file with Description, CTH, and optional BCD / assessable valu
 
 `/api/health` separates API readiness from `classification_available`. A missing model allows review workflows; an incompatible model fails readiness. No external AI keys are used.
 
+## BCD match scoring and review priority
+
+The results table compares the provided BCD with a **verified applicable reference**, independently of the classification model score. Equal verified rates (including 0% vs 0%) score 100/100. Otherwise the agreement score is `100 * (1 - abs(provided - reference) / max(provided, reference))`, bounded to 0..100. Differences of at most 0.01 percentage points count as a match. Thus 5% vs 10% scores 50/100 in either direction; only the lower provided rate indicates potential underpayment.
+
+Missing rates, unresolved classifications or unverified notification conditions display `— /100` / **Unverified**, rather than an invented probability. Any uncertain result, rate discrepancy, CTH mismatch or other review flag makes the entire table and exported Excel row red. Red is a review signal and does not establish fraud.
+
+The Excel export includes **BCD match score /100**, **BCD comparison status**, **Fraud review priority**, **Potential BCD underpayment**, **BCD difference (percentage points)**, **BCD comparison reason**, and **Needs review**. High priority means a provided rate below a verified reference; Medium means a CTH mismatch despite equal BCD; Low means no BCD underpayment is indicated; Review required means evidence is incomplete. Neither the score nor priority is a calibrated probability of fraud. Historical results are assessed on read, and downloads are regenerated with the current scoring columns without changing saved classification decisions.
+
 ## Corrections and retraining
 
 Reviewer corrections are saved to the existing database. Export the local unsigned-in corrections, or select one authenticated user:
